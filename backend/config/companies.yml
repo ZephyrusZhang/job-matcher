@@ -1,0 +1,17 @@
+companies:
+  - id: bytedance
+    name: 字节跳动
+    career_url: "https://jobs.bytedance.com/campus/position"
+    crawl_interval_hours: 12
+    max_pages: 3
+
+  - id: meituan
+    name: 美团
+    career_url: "https://zhaopin.meituan.com/"
+    crawl_interval_hours: 24
+    max_pages: -1
+
+  - id: alibaba
+    name: 阿里巴巴
+    career_url: "https://talent.alibaba.com/"
+    crawl_interval_hours: 12
