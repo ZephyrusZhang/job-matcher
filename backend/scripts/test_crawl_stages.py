@@ -10,17 +10,25 @@
     # 阶段3：测试 LLM 结构化解析
     uv run python scripts/test_crawl_stages.py parse 字节跳动
 
-    # 完整流水线测试（Agent 驱动 + 爬取与解析并行）
+    # 完整流水线测试（直接调用 pipeline.crawl_company）
     uv run python scripts/test_crawl_stages.py full "https://jobs.bytedance.com/campus/position" 字节跳动 2
 """
 
 import asyncio
 import json
+import logging
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Enable logging so pipeline's logger.info messages are visible
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 
 async def test_browser(url: str, max_pages: int = 1):
@@ -88,11 +96,6 @@ async def test_browser(url: str, max_pages: int = 1):
                     )
 
             print(f"  ✓ 收集到 {len(detail_htmls)} 个详情页")
-
-            for i, html in enumerate(detail_htmls):
-                idx = len(all_pages) + i
-                out = Path(f"/tmp/crawl_page_{idx}.html")
-                out.write_text(html, encoding="utf-8")
             all_pages.extend(detail_htmls)
 
             if max_pages != -1 and pages_crawled >= max_pages:
@@ -113,7 +116,6 @@ async def test_browser(url: str, max_pages: int = 1):
             if not await browser.go_next_page(page, pages_crawled, next_button_selector=next_btn, page_number_selector=page_num_sel):
                 print(f"  ✗ 没有下一页")
                 break
-            # Wait for cards to render after pagination
             if cache.is_locked() and cache.get_locked().job_card_selector:
                 await browser.wait_for_selector(page, cache.get_locked().job_card_selector)
             elif pattern and pattern.job_card_selector:
@@ -188,7 +190,6 @@ async def test_parse(texts: list[str] | None = None, company_name: str = "测试
 
     detail_texts = [t for t in texts if len(t.strip()) > 50]
     print(f"共 {len(texts)} 个文本块，{len(detail_texts)} 个非空\n")
-
     print(f"并行发送 {len(detail_texts)} 个 LLM 请求...\n")
 
     async def _parse_page(i, text):
@@ -207,7 +208,6 @@ async def test_parse(texts: list[str] | None = None, company_name: str = "测试
     all_jobs = [job for page_jobs in results for job in page_jobs]
 
     print(f"\n✓ 共解析出 {len(all_jobs)} 个技术岗位\n")
-
     for i, job in enumerate(all_jobs):
         print(f"  {i+1}. [{job.get('category')}] {job.get('title')} — {job.get('location')}")
 
@@ -218,14 +218,12 @@ async def test_parse(texts: list[str] | None = None, company_name: str = "测试
 
 
 async def test_full(url: str, company_name: str, max_pages: int = 1):
-    """完整流水线测试：Agent 驱动 + 爬取与解析并行"""
-    from app.config import CrawlConfig, load_config
+    """完整流水线测试：直接调用 pipeline.crawl_company"""
+    from app.config import CompanyConfig, CrawlConfig, load_config
     from app.crawl.browser import BrowserManager
     from app.crawl.extractor import ContentExtractor
-    from app.crawl.agent import ListingAnalyzer
-    from app.crawl.selector_cache import SelectorCache
+    from app.crawl.pipeline import crawl_company
     from app.llm.client import LLMClient
-    from app.llm.prompts.parse_job import build_parse_job_messages
 
     print(f"\n{'='*60}")
     print(f"[完整流水线] {company_name}")
@@ -236,159 +234,50 @@ async def test_full(url: str, company_name: str, max_pages: int = 1):
     app_config = load_config()
     llm_client = LLMClient(app_config.llm)
     extractor = ContentExtractor()
-    analyzer = ListingAnalyzer(llm_client)
-    cache = SelectorCache(lock_threshold=app_config.crawl.agent_lock_threshold)
 
-    config = CrawlConfig(browser_headless=False)
-    browser = BrowserManager(config)
+    crawl_config = CrawlConfig(browser_headless=True)
+    browser = BrowserManager(crawl_config)
+
+    # Build a CompanyConfig for this test run
+    company = CompanyConfig(
+        id="test",
+        name=company_name,
+        career_url=url,
+        max_pages=max_pages,
+    )
 
     t0 = time.time()
-    all_jobs = []
-    pending_task: asyncio.Task | None = None
-    total_details = 0
-    pages_crawled = 0
-
-    async def _extract_and_parse(detail_pages: list[tuple[str, str]], label: str) -> list[dict]:
-        """detail_pages: list of (html, source_url) tuples."""
-        htmls = [html for html, _url in detail_pages]
-        urls = [url for _html, url in detail_pages]
-
-        texts = await extractor.extract(htmls)
-        paired = [(t, u) for t, u in zip(texts, urls) if len(t.strip()) > 50]
-        print(f"  [{label}] 提取 {len(texts)} 文本块, {len(paired)} 个非空")
-        if not paired:
-            return []
-
-        async def _parse_one(i, text, source_url):
-            messages = build_parse_job_messages(text, company_name)
-            try:
-                result = await llm_client.structured_parse(messages)
-                jobs = result.get("jobs", [])
-                for job in jobs:
-                    job["source_url"] = source_url
-                    print(f"  [{label}] ✓ {job.get('title')}")
-                return jobs
-            except Exception as e:
-                print(f"  [{label}] ✗ 解析失败: {e}")
-                return []
-
-        results = await asyncio.gather(*[_parse_one(i, t, u) for i, (t, u) in enumerate(paired)])
-        return [job for page_jobs in results for job in page_jobs]
 
     try:
         await browser.init()
         print("✓ 浏览器启动成功\n")
 
-        page = await browser.open_page(url)
-        pattern = None
+        # Use a mock db that just collects jobs without writing to SQLite
+        collected_jobs = []
 
-        while True:
-            pages_crawled += 1
-            print(f"{'─'*40}")
-            print(f"📄 列表页 {pages_crawled}")
+        class MockDB:
+            pass
 
-            await browser.scroll_to_bottom(page)
+        # Monkey-patch upsert_jobs to collect instead of write
+        import app.crawl.pipeline as pipeline_mod
+        original_upsert = pipeline_mod.upsert_jobs
 
-            detail_htmls = []
-            if cache.is_locked():
-                locked = cache.get_locked()
-                print(f"  🔒 锁定模式: {locked.job_card_selector} ({locked.card_strategy})")
-                # 验证选择器能选中几个元素
-                count = await page.evaluate(f"document.querySelectorAll('{locked.job_card_selector}').length")
-                print(f"  📊 选择器匹配到 {count} 个元素")
-                detail_htmls = await browser.collect_details_by_selector(
-                    page, locked.job_card_selector, locked.card_strategy
-                )
-            else:
-                print(f"  🤖 Agent 分析中...")
-                ctx = await browser.get_page_context(page)
-                # 保存 DOM 分析报告供检查
-                Path("/tmp/crawl_dom_analysis.txt").write_text(ctx.html_snippet, encoding="utf-8")
-                print(f"  📋 DOM 分析报告已保存到 /tmp/crawl_dom_analysis.txt")
+        async def mock_upsert(db, jobs, company_id):
+            collected_jobs.extend(jobs)
+            return {"jobs_found": len(jobs), "jobs_new": len(jobs), "jobs_updated": 0}
 
-                pattern = await analyzer.analyze_page(ctx.text, ctx.url, ctx.html_snippet)
-                cache.record(pattern)
-                print(f"  → selector:  {pattern.job_card_selector}")
-                print(f"  → strategy:  {pattern.card_strategy}")
-                print(f"  → links:     {len(pattern.job_links)} 个")
-                if pattern.job_links:
-                    for link in pattern.job_links[:5]:
-                        print(f"      {link}")
-                print(f"  → next_btn:  {pattern.next_button_selector}")
-                print(f"  → page_num:  {pattern.page_number_selector}")
-                print(f"  → confidence:{pattern.confidence:.2f}")
-                print(f"  → locked:    {cache.is_locked()}")
-
-                # 验证 Agent 返回的选择器
-                if pattern.job_card_selector:
-                    try:
-                        count = await page.evaluate(
-                            f"document.querySelectorAll('{pattern.job_card_selector}').length"
-                        )
-                        print(f"  📊 选择器 '{pattern.job_card_selector}' 匹配到 {count} 个元素")
-                    except Exception as e:
-                        print(f"  ⚠️ 选择器无效: {e}")
-
-                if pattern.job_links:
-                    print(f"  ➡️ 使用链接列表收集详情...")
-                    detail_htmls = await browser.collect_details_by_links(page, pattern.job_links)
-                elif pattern.job_card_selector:
-                    print(f"  ➡️ 使用选择器 ({pattern.card_strategy}) 收集详情...")
-                    detail_htmls = await browser.collect_details_by_selector(
-                        page, pattern.job_card_selector, pattern.card_strategy
-                    )
-                else:
-                    print(f"  ⚠️ Agent 未返回有效选择器")
-
-            # detail_htmls is now list[tuple[str, str]] — (html, url)
-            print(f"  ✓ 收集到 {len(detail_htmls)} 个详情页")
-            if detail_htmls:
-                for i, (html, durl) in enumerate(detail_htmls[:3]):
-                    print(f"    详情 {i}: {len(html)} bytes — {durl[:80]}")
-            total_details += len(detail_htmls)
-
-            # Pipeline: collect previous + start new
-            if pending_task is not None:
-                jobs = await pending_task
-                all_jobs.extend(jobs)
-
-            if detail_htmls:
-                pending_task = asyncio.create_task(
-                    _extract_and_parse(detail_htmls, f"列表页{pages_crawled}")
-                )
-            else:
-                pending_task = None
-
-            if max_pages != -1 and pages_crawled >= max_pages:
-                break
-
-            await browser.close_other_tabs(page)
-            await browser.scroll_to_bottom(page)
-
-            next_btn = None
-            page_num_sel = None
-            if cache.is_locked():
-                lk2 = cache.get_locked()
-                next_btn = lk2.next_button_selector
-                page_num_sel = lk2.page_number_selector
-            elif pattern:
-                next_btn = pattern.next_button_selector
-                page_num_sel = pattern.page_number_selector
-
-            if not await browser.go_next_page(page, pages_crawled, next_button_selector=next_btn, page_number_selector=page_num_sel):
-                print(f"  ✗ 没有下一页")
-                break
-            # Wait for cards to render after pagination
-            if cache.is_locked() and cache.get_locked().job_card_selector:
-                await browser.wait_for_selector(page, cache.get_locked().job_card_selector)
-            elif pattern and pattern.job_card_selector:
-                await browser.wait_for_selector(page, pattern.job_card_selector)
-
-        if pending_task is not None:
-            jobs = await pending_task
-            all_jobs.extend(jobs)
-
-        await browser.close_page(page)
+        pipeline_mod.upsert_jobs = mock_upsert
+        try:
+            result = await crawl_company(
+                company=company,
+                browser=browser,
+                extractor=extractor,
+                llm_client=llm_client,
+                db=MockDB(),
+                crawl_config=crawl_config,
+            )
+        finally:
+            pipeline_mod.upsert_jobs = original_upsert
 
     finally:
         await browser.close()
@@ -397,19 +286,17 @@ async def test_full(url: str, company_name: str, max_pages: int = 1):
 
     print(f"\n{'='*60}")
     print(f"✓ 流水线完成!")
-    print(f"  列表页数:   {pages_crawled}")
-    print(f"  详情页数:   {total_details}")
-    print(f"  解析岗位数: {len(all_jobs)}")
+    print(f"  解析岗位数: {result.get('jobs_found', 0)}")
     print(f"  总耗时:     {elapsed:.1f}s")
     print(f"{'='*60}\n")
 
-    for i, job in enumerate(all_jobs):
+    for i, job in enumerate(collected_jobs):
         print(f"  {i+1}. [{job.get('category')}] {job.get('title')} — {job.get('location')}")
 
     out = Path("/tmp/crawl_parsed.json")
-    out.write_text(json.dumps({"jobs": all_jobs}, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"✓ 完整结果已保存到 {out}")
-    return all_jobs
+    out.write_text(json.dumps({"jobs": collected_jobs}, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n✓ 完整结果已保存到 {out}")
+    return collected_jobs
 
 
 def main():

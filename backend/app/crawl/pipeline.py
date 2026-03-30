@@ -87,8 +87,8 @@ async def crawl_company(
     logger.info("Starting crawl for %s (%s)", company.name, company.career_url)
 
     # Setup
-    lock_threshold = crawl_config.agent_lock_threshold if crawl_config else 2
-    learning_pages = crawl_config.agent_learning_pages if crawl_config else 2
+    lock_threshold = crawl_config.agent_lock_threshold if crawl_config else 1
+    learning_pages = crawl_config.agent_learning_pages if crawl_config else 1
 
     cache = SelectorCache(lock_threshold=lock_threshold)
     analyzer = ListingAnalyzer(llm_client)
@@ -98,7 +98,8 @@ async def crawl_company(
         cache.force_lock(LockedPattern(
             job_card_selector=company.job_card_selector,
             card_strategy="auto",
-            next_page_selector=None,
+            next_button_selector=None,
+            page_number_selector=None,
         ))
         logger.info("Using hint selector: %s", company.job_card_selector)
 
