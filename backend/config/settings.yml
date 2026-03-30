@@ -27,3 +27,5 @@ crawl:
   page_load_timeout: 30000
   max_scroll_attempts: 20
   concurrent_companies: 2
+  agent_learning_pages: 1             # Agent 只分析第一页
+  agent_lock_threshold: 1             # 分析 1 次即锁定

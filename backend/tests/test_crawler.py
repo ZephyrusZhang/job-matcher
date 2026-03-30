@@ -123,76 +123,167 @@ class TestBrowserManager:
             mock_instance = AsyncMock()
             mock_browser = AsyncMock()
             mock_instance.chromium.launch = AsyncMock(return_value=mock_browser)
-            mock_pw.return_value.__aenter__ = AsyncMock(return_value=mock_instance)
-            mock_pw.return_value.__aexit__ = AsyncMock(return_value=None)
             mock_pw.return_value.start = AsyncMock(return_value=mock_instance)
 
             await manager.init()
             assert manager._browser is not None
             await manager.close()
 
-    async def test_render_and_collect_single_page(self):
-        """Should collect detail pages and resolve relative URLs."""
+    async def test_get_page_context(self):
+        """get_page_context should return text + DOM analysis."""
         from app.crawl.browser import BrowserManager
         from app.config import CrawlConfig
 
-        config = CrawlConfig()
-        manager = BrowserManager(config)
+        manager = BrowserManager(CrawlConfig())
+
+        mock_page = AsyncMock()
+        mock_page.url = "https://example.com/jobs"
+        # First evaluate call returns text, second returns DOM analysis dict
+        mock_page.evaluate = AsyncMock(side_effect=[
+            "Frontend Dev\nBeijing",  # innerText
+            {  # DOM analysis
+                "linkGroups": [
+                    {"selector": "a.job-link", "count": 10, "hrefs": ["/job/1", "/job/2"]},
+                ],
+                "repeatingElements": [
+                    {"selector": "li.job-card", "count": 10, "sample": "<li class='job-card'>..."},
+                ],
+                "pagination": '<nav class="pages"><a>2</a></nav>',
+            },
+        ])
+
+        ctx = await manager.get_page_context(mock_page)
+        assert ctx.url == "https://example.com/jobs"
+        assert "Frontend Dev" in ctx.text
+        assert "a.job-link" in ctx.html_snippet
+        assert "li.job-card" in ctx.html_snippet
+
+    async def test_collect_details_by_links(self):
+        """Should open each link in a new tab and collect HTML."""
+        from app.crawl.browser import BrowserManager
+        from app.config import CrawlConfig
+
+        manager = BrowserManager(CrawlConfig())
+
+        # Mock the detail tab opened via context.new_page()
+        mock_detail_page = AsyncMock()
+        mock_detail_page.content = AsyncMock(return_value="<html>detail</html>")
+        mock_detail_page.url = "https://example.com/job/1"
+        mock_detail_page.goto = AsyncMock()
+        mock_detail_page.wait_for_load_state = AsyncMock()
+
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_detail_page)
+
+        mock_listing_page = AsyncMock()
+        mock_listing_page.url = "https://example.com/jobs"
+        mock_listing_page.context = mock_context
+
+        result = await manager.collect_details_by_links(
+            mock_listing_page, ["/job/1", "/job/2"]
+        )
+        assert len(result) == 2
+        # Each result is a (html, url) tuple
+        assert result[0] == ("<html>detail</html>", "https://example.com/job/1")
+        assert mock_detail_page.close.call_count == 2
+
+    async def test_collect_details_by_selector_href(self):
+        """href strategy: extract hrefs from <a> cards, open in new tabs."""
+        from app.crawl.browser import BrowserManager
+        from app.config import CrawlConfig
+
+        manager = BrowserManager(CrawlConfig())
 
         mock_link = AsyncMock()
         mock_link.get_attribute = AsyncMock(return_value="/jobs/123/detail")
+        mock_link.evaluate = AsyncMock(return_value="a")
+
+        mock_detail_page = AsyncMock()
+        mock_detail_page.content = AsyncMock(return_value="<html>detail</html>")
+        mock_detail_page.url = "https://example.com/jobs/123/detail"
+        mock_detail_page.goto = AsyncMock()
+        mock_detail_page.wait_for_load_state = AsyncMock()
+
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_detail_page)
 
         mock_page = AsyncMock()
         mock_page.url = "https://example.com/jobs"
-        mock_page.content = AsyncMock(return_value="<html>detail</html>")
-        mock_page.evaluate = AsyncMock(return_value=0)
+        mock_page.context = mock_context
         mock_page.query_selector_all = AsyncMock(return_value=[mock_link])
-        mock_page.wait_for_load_state = AsyncMock()
-        mock_page.goto = AsyncMock()
-        # Mock get_by_text for _go_to_next_page — no pagination element found
-        mock_locator = AsyncMock()
-        mock_locator.count = AsyncMock(return_value=0)
-        mock_page.get_by_text = MagicMock(return_value=mock_locator)
 
-        mock_browser = AsyncMock()
-        mock_browser.new_page = AsyncMock(return_value=mock_page)
-        manager._browser = mock_browser
+        result = await manager.collect_details_by_selector(mock_page, "a.job", "auto")
+        assert len(result) == 1
+        assert result[0] == ("<html>detail</html>", "https://example.com/jobs/123/detail")
+        mock_detail_page.close.assert_called_once()
 
-        pages = await manager.render_and_collect("https://example.com/jobs", max_pages=1)
-        assert isinstance(pages, list)
-        assert len(pages) == 1
-        goto_calls = [c[0][0] for c in mock_page.goto.call_args_list]
-        assert "https://example.com/jobs/123/detail" in goto_calls
-
-    async def test_render_respects_max_pages(self):
-        """max_pages should limit how many listing pages are crawled."""
+    async def test_go_next_page_by_button_selector(self):
+        """Primary: should use next_button_selector first."""
         from app.crawl.browser import BrowserManager
         from app.config import CrawlConfig
 
-        config = CrawlConfig()
-        manager = BrowserManager(config)
+        manager = BrowserManager(CrawlConfig())
+
+        mock_btn = AsyncMock()
+        mock_btn.evaluate = AsyncMock(return_value=False)
 
         mock_page = AsyncMock()
-        mock_page.url = "https://example.com/jobs"
-        mock_page.content = AsyncMock(return_value="<html>detail</html>")
-        mock_page.evaluate = AsyncMock(return_value=0)
-        mock_page.query_selector_all = AsyncMock(return_value=[])
+        mock_page.query_selector = AsyncMock(return_value=mock_btn)
         mock_page.wait_for_load_state = AsyncMock()
-        mock_page.goto = AsyncMock()
-        # Mock pagination — page 2 link exists
-        mock_el = AsyncMock()
-        mock_el.evaluate = AsyncMock(side_effect=["a", True])
-        mock_locator = AsyncMock()
-        mock_locator.count = AsyncMock(return_value=1)
-        mock_locator.nth = MagicMock(return_value=mock_el)
-        mock_page.get_by_text = MagicMock(return_value=mock_locator)
 
-        mock_browser = AsyncMock()
-        mock_browser.new_page = AsyncMock(return_value=mock_page)
-        manager._browser = mock_browser
+        result = await manager.go_next_page(mock_page, 1, next_button_selector="a.next-btn")
+        assert result is True
+        mock_btn.click.assert_called_once()
 
-        await manager.render_and_collect("https://example.com/jobs", max_pages=2)
-        # Should not go beyond 2 listing pages even though next-page exists
+    async def test_go_next_page_by_page_number_selector(self):
+        """Fallback: should use page_number_selector to click page N+1."""
+        from app.crawl.browser import BrowserManager
+        from app.config import CrawlConfig
+
+        manager = BrowserManager(CrawlConfig())
+
+        mock_el_1 = AsyncMock()
+        mock_el_1.evaluate = AsyncMock(side_effect=["1", False])
+        mock_el_2 = AsyncMock()
+        mock_el_2.evaluate = AsyncMock(side_effect=["2", False])
+
+        mock_page = AsyncMock()
+        mock_page.query_selector_all = AsyncMock(return_value=[mock_el_1, mock_el_2])
+        mock_page.query_selector = AsyncMock(return_value=None)
+        mock_page.wait_for_load_state = AsyncMock()
+
+        result = await manager.go_next_page(mock_page, 1, page_number_selector="li.number")
+        assert result is True
+        mock_el_2.click.assert_called_once()
+
+    async def test_go_next_page_fallback_to_arrow(self):
+        """When both selectors fail, fall back to generic '>' arrow."""
+        from app.crawl.browser import BrowserManager
+        from app.config import CrawlConfig
+
+        manager = BrowserManager(CrawlConfig())
+
+        mock_arrow = AsyncMock()
+        mock_arrow.evaluate = AsyncMock(side_effect=["a", False])
+
+        mock_arrow_locator = AsyncMock()
+        mock_arrow_locator.count = AsyncMock(return_value=1)
+        mock_arrow_locator.nth = MagicMock(return_value=mock_arrow)
+
+        mock_empty_locator = AsyncMock()
+        mock_empty_locator.count = AsyncMock(return_value=0)
+
+        mock_page = AsyncMock()
+        mock_page.query_selector = AsyncMock(return_value=None)
+        mock_page.query_selector_all = AsyncMock(return_value=[])
+        mock_page.get_by_text = MagicMock(side_effect=lambda text, **kw: (
+            mock_arrow_locator if text == ">" else mock_empty_locator
+        ))
+        mock_page.wait_for_load_state = AsyncMock()
+
+        result = await manager.go_next_page(mock_page, 5)
+        assert result is True
+        mock_arrow.click.assert_called_once()
 
 
 class TestContentExtractor:
@@ -243,112 +334,188 @@ class TestCrawlScheduler:
 
 
 class TestPipeline:
-    async def test_crawl_company_pipeline(self):
-        """Full pipeline should coordinate browser → extractor → LLM → dedup."""
+    def _make_mock_browser(self):
+        """Create a mock browser with fine-grained methods."""
+        mock = AsyncMock()
+        mock.open_page = AsyncMock(return_value=AsyncMock())
+        mock.close_page = AsyncMock()
+        mock.scroll_to_bottom = AsyncMock()
+        mock._navigate = AsyncMock()
+        mock.go_next_page = AsyncMock(return_value=False)  # single page by default
+        return mock
+
+    def _make_job_response(self, title="Job"):
+        return {"jobs": [{
+            "title": title, "category": "后端", "source_url": "https://test.com/1",
+            "responsibilities": "dev", "requirements": "Python",
+        }]}
+
+    async def test_pipeline_with_hint_selector(self):
+        """Company with job_card_selector hint should skip agent, use selector directly."""
         from app.crawl.pipeline import crawl_company
         from app.config import CompanyConfig
 
         company = CompanyConfig(
-            id="test", name="测试", career_url="https://test.com", crawl_interval_hours=24
+            id="test", name="测试", career_url="https://test.com",
+            crawl_interval_hours=24, max_pages=1,
+            job_card_selector="a.job-link",  # hint provided
         )
 
-        # Mock browser.crawl_listing_pages as an async generator yielding one batch
-        async def mock_crawl_listing_pages(url, max_pages=-1):
-            yield ["<html>detail page</html>"]
-
-        mock_browser = AsyncMock()
-        mock_browser.crawl_listing_pages = mock_crawl_listing_pages
+        mock_browser = self._make_mock_browser()
+        mock_browser.collect_details_by_selector = AsyncMock(return_value=[("<html>detail</html>", "https://test.com/job/1")])
 
         mock_extractor = AsyncMock()
-        mock_extractor.extract = AsyncMock(
-            return_value=["Detail with 职位描述 and 职位要求"]
-        )
+        mock_extractor.extract = AsyncMock(return_value=["这是一个足够长的岗位描述文本，包含职位描述和职位要求，需要超过50个字符才能通过非空过滤，所以我们写一段比较长的文字在这里"])
 
         mock_llm = AsyncMock()
-        mock_llm.structured_parse = AsyncMock(
-            return_value={
-                "jobs": [
-                    {
-                        "title": "Test Job",
-                        "category": "后端",
-                        "location": "北京",
-                        "job_type": "fulltime",
-                        "responsibilities": "coding",
-                        "requirements": "1、熟悉Python",
-                        "department": None,
-                        "department_product": None,
-                        "education": None,
-                        "experience": None,
-                        "posted_date": None,
-                        "source_url": "https://test.com/job1",
-                        "summary": "Test",
-                    }
-                ]
-            }
-        )
+        mock_llm.structured_parse = AsyncMock(return_value=self._make_job_response())
 
         mock_db = AsyncMock()
 
         with patch("app.crawl.pipeline.upsert_jobs", new_callable=AsyncMock) as mock_upsert:
             mock_upsert.return_value = {"jobs_found": 1, "jobs_new": 1, "jobs_updated": 0}
             result = await crawl_company(
-                company=company,
-                browser=mock_browser,
-                extractor=mock_extractor,
-                llm_client=mock_llm,
-                db=mock_db,
+                company=company, browser=mock_browser,
+                extractor=mock_extractor, llm_client=mock_llm, db=mock_db,
             )
             assert result["jobs_found"] == 1
-            mock_extractor.extract.assert_called_once()
-            mock_llm.structured_parse.assert_called_once()
+            # Should have used collect_details_by_selector with the hint
+            mock_browser.collect_details_by_selector.assert_called()
+            call_args = mock_browser.collect_details_by_selector.call_args
+            assert call_args[0][1] == "a.job-link"
+            # Agent structured_parse called for job parsing, NOT for page analysis
+            # (parse_job prompt, not analyze_listing prompt)
 
-    async def test_pipeline_overlaps_crawl_and_parse(self):
-        """While LLM parses page 1, browser should be crawling page 2."""
+    async def test_pipeline_with_agent(self):
+        """Without hint, agent should analyze page and return selectors."""
         from app.crawl.pipeline import crawl_company
-        from app.config import CompanyConfig
+        from app.config import CompanyConfig, CrawlConfig
 
         company = CompanyConfig(
             id="test", name="测试", career_url="https://test.com",
-            crawl_interval_hours=24, max_pages=2,
+            crawl_interval_hours=24, max_pages=1,
+            job_card_selector="",  # no hint
         )
 
-        call_order = []
-
-        async def mock_crawl_listing_pages(url, max_pages=-1):
-            call_order.append("crawl_page_1")
-            yield ["<html>page1</html>"]
-            call_order.append("crawl_page_2")
-            yield ["<html>page2</html>"]
-
-        mock_browser = AsyncMock()
-        mock_browser.crawl_listing_pages = mock_crawl_listing_pages
-
-        async def mock_extract(htmls):
-            return ["职位描述 职位要求 content"]
+        mock_browser = self._make_mock_browser()
+        mock_browser.get_page_context = AsyncMock(
+            return_value=MagicMock(url="https://test.com", text="Jobs", html_snippet="<div/>")
+        )
+        mock_browser.collect_details_by_links = AsyncMock(return_value=[("<html>detail</html>", "https://test.com/job/1")])
 
         mock_extractor = AsyncMock()
-        mock_extractor.extract = AsyncMock(side_effect=mock_extract)
+        mock_extractor.extract = AsyncMock(return_value=["这是一个足够长的岗位描述文本，包含职位描述和职位要求，需要超过50个字符才能通过非空过滤，所以我们写一段比较长的文字在这里"])
 
+        # LLM returns: first call = agent analysis, second call = job parse
         mock_llm = AsyncMock()
-        mock_llm.structured_parse = AsyncMock(
-            return_value={"jobs": [{"title": "Job", "category": "后端",
-                "source_url": "https://test.com/1", "responsibilities": "dev",
-                "requirements": "Python"}]}
-        )
+        mock_llm.structured_parse = AsyncMock(side_effect=[
+            # Agent analysis response
+            {
+                "job_links": ["https://test.com/job/1"],
+                "job_card_selector": "a.job",
+                "card_strategy": "href",
+                "next_button_selector": None, "page_number_selector": None,
+                "confidence": 0.9,
+            },
+            # Job parse response
+            self._make_job_response(),
+        ])
 
         mock_db = AsyncMock()
 
         with patch("app.crawl.pipeline.upsert_jobs", new_callable=AsyncMock) as mock_upsert:
-            mock_upsert.return_value = {"jobs_found": 2, "jobs_new": 2, "jobs_updated": 0}
+            mock_upsert.return_value = {"jobs_found": 1, "jobs_new": 1, "jobs_updated": 0}
             result = await crawl_company(
-                company=company,
-                browser=mock_browser,
-                extractor=mock_extractor,
-                llm_client=mock_llm,
-                db=mock_db,
+                company=company, browser=mock_browser,
+                extractor=mock_extractor, llm_client=mock_llm, db=mock_db,
+                crawl_config=CrawlConfig(),
             )
-            assert result["jobs_found"] == 2
-            # Extract should be called twice (once per listing page)
-            assert mock_extractor.extract.call_count == 2
-            # LLM should be called twice
-            assert mock_llm.structured_parse.call_count == 2
+            assert result["jobs_found"] == 1
+            # Agent should have called get_page_context
+            mock_browser.get_page_context.assert_called_once()
+            # Should use collect_details_by_links since agent returned links
+            mock_browser.collect_details_by_links.assert_called_once()
+
+    async def test_pipeline_agent_locks_after_consistent_pages(self):
+        """Agent analyzes only page 1, locks immediately, pages 2-3 use locked selector."""
+        from app.crawl.pipeline import crawl_company
+        from app.config import CompanyConfig, CrawlConfig
+
+        company = CompanyConfig(
+            id="test", name="测试", career_url="https://test.com",
+            crawl_interval_hours=24, max_pages=3,
+            job_card_selector="",
+        )
+
+        mock_browser = self._make_mock_browser()
+        mock_browser.go_next_page = AsyncMock(side_effect=[True, True, False])
+        mock_browser.get_page_context = AsyncMock(
+            return_value=MagicMock(url="https://test.com", text="Jobs", html_snippet="<div/>")
+        )
+        mock_browser.collect_details_by_links = AsyncMock(return_value=[("<html>d</html>", "https://test.com/job/1")])
+        mock_browser.collect_details_by_selector = AsyncMock(return_value=[("<html>d</html>", "https://test.com/job/1")])
+        mock_browser.wait_for_selector = AsyncMock()
+
+        mock_extractor = AsyncMock()
+        mock_extractor.extract = AsyncMock(return_value=["这是一个足够长的岗位描述文本，包含职位描述和职位要求，需要超过50个字符才能通过非空过滤，所以我们写一段比较长的文字在这里"])
+
+        agent_response = {
+            "job_links": ["/job/1"], "job_card_selector": "a.job",
+            "card_strategy": "href", "next_button_selector": None, "page_number_selector": None, "confidence": 0.9,
+        }
+        mock_llm = AsyncMock()
+        mock_llm.structured_parse = AsyncMock(side_effect=[
+            agent_response,              # page 1 agent analysis → locks!
+            self._make_job_response(),   # page 1 parse
+            self._make_job_response(),   # page 2 parse (locked, no agent)
+            self._make_job_response(),   # page 3 parse (locked, no agent)
+        ])
+
+        mock_db = AsyncMock()
+
+        with patch("app.crawl.pipeline.upsert_jobs", new_callable=AsyncMock) as mock_upsert:
+            mock_upsert.return_value = {"jobs_found": 3, "jobs_new": 3, "jobs_updated": 0}
+            result = await crawl_company(
+                company=company, browser=mock_browser,
+                extractor=mock_extractor, llm_client=mock_llm, db=mock_db,
+                crawl_config=CrawlConfig(agent_learning_pages=1, agent_lock_threshold=1),
+            )
+            assert result["jobs_found"] == 3
+            # Agent only called once (page 1)
+            assert mock_browser.get_page_context.call_count == 1
+            # Pages 2-3 use locked selector
+            assert mock_browser.collect_details_by_selector.call_count >= 2
+
+    async def test_pipeline_fallback_on_agent_failure(self):
+        """If agent fails, pipeline should fallback to default selector."""
+        from app.crawl.pipeline import crawl_company
+        from app.config import CompanyConfig, CrawlConfig
+
+        company = CompanyConfig(
+            id="test", name="测试", career_url="https://test.com",
+            crawl_interval_hours=24, max_pages=1,
+            job_card_selector="",
+        )
+
+        mock_browser = self._make_mock_browser()
+        mock_browser.get_page_context = AsyncMock(side_effect=RuntimeError("failed"))
+        mock_browser.collect_details_by_selector = AsyncMock(return_value=[("<html>d</html>", "https://test.com/job/1")])
+
+        mock_extractor = AsyncMock()
+        mock_extractor.extract = AsyncMock(return_value=["这是一个足够长的岗位描述文本，包含职位描述和职位要求，需要超过50个字符才能通过非空过滤，所以我们写一段比较长的文字在这里"])
+
+        mock_llm = AsyncMock()
+        mock_llm.structured_parse = AsyncMock(return_value=self._make_job_response())
+
+        mock_db = AsyncMock()
+
+        with patch("app.crawl.pipeline.upsert_jobs", new_callable=AsyncMock) as mock_upsert:
+            mock_upsert.return_value = {"jobs_found": 1, "jobs_new": 1, "jobs_updated": 0}
+            result = await crawl_company(
+                company=company, browser=mock_browser,
+                extractor=mock_extractor, llm_client=mock_llm, db=mock_db,
+                crawl_config=CrawlConfig(),
+            )
+            assert result["jobs_found"] == 1
+            # Should have fallen back to default selector
+            mock_browser.collect_details_by_selector.assert_called()

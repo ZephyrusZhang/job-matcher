@@ -43,6 +43,8 @@ class CrawlConfig(BaseModel):
     page_load_timeout: int = 30000
     max_scroll_attempts: int = 20
     concurrent_companies: int = 2
+    agent_learning_pages: int = 1   # Agent 分析的最大页数
+    agent_lock_threshold: int = 1   # 连续一致次数阈值后锁定
 
 
 class CompanyConfig(BaseModel):
@@ -51,6 +53,8 @@ class CompanyConfig(BaseModel):
     career_url: str
     crawl_interval_hours: int = 12
     max_pages: int = -1  # 爬取页数，-1 表示全部爬取
+    # 可选 hint：手动指定岗位卡片 CSS 选择器，跳过 Agent 分析。留空则由 Agent 自动发现。
+    job_card_selector: str = ""
 
 
 class AppConfig(BaseModel):

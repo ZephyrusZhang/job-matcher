@@ -1,0 +1,22 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Test Crawl Stages",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/scripts/test_crawl_stages.py",
+            "args": [
+                "full",
+                "https://jobs.bytedance.com/campus/position?keywords=&category=6704215862557018372&location=&project=7194661126919358757&type=&job_hot_flag=&current=1&limit=10&functionCategory=&tag=",
+                "字节跳动",
+                "2"
+            ],
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/backend/.venv/bin/python"
+        }
+    ]
+}

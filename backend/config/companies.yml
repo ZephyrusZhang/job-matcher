@@ -4,6 +4,14 @@ companies:
     career_url: "https://jobs.bytedance.com/campus/position"
     crawl_interval_hours: 12
     max_pages: 3
+    # job_card_selector 留空，由 Agent 自动发现
+
+  - id: tencent
+    name: 腾讯
+    career_url: "https://join.qq.com/post.html"
+    crawl_interval_hours: 12
+    max_pages: 2
+    # job_card_selector 留空，由 Agent 自动发现
 
   - id: meituan
     name: 美团
