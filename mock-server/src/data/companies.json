@@ -1,0 +1,4 @@
+[
+  { "id": "bytedance", "name": "字节跳动", "career_url": "https://jobs.bytedance.com", "crawl_interval_hours": 12 },
+  { "id": "tencent", "name": "腾讯", "career_url": "https://join.qq.com", "crawl_interval_hours": 24 }
+]
