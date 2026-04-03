@@ -126,7 +126,7 @@ frontend/
 | `/jobs` | 岗位总览 | 公司选择 + 筛选 + 卡片列表 + 详情侧滑面板 |
 | `/match` | 智能匹配 | 选公司 + 上传简历 + 偏好 + 报告 + 追问对话 |
 | `/compare` | 岗位对比 | 选公司 + 上传简历 + 偏好 + 报告 + 追问对话 |
-| `/settings` | 设置 | 显示偏好 + 目标公司展示 |
+| `/settings` | 设置 | 显示偏好 + 目标公司管理（增删改 + 手动触发爬取 + 状态展示） |
 
 4 个页面，所有页面共享 `AppShell` 布局（TopNav + Sidebar），无嵌套路由。
 
@@ -252,6 +252,9 @@ export async function apiPatch<T>(path: string, body?: unknown): Promise<ApiResp
 ```typescript
 // lib/api/companies.ts
 export const fetchCompanies = () => apiGet<Company[]>('/api/companies')
+export const createCompany = (data: CompanyCreate) => apiPost<Company>('/api/companies', data)
+export const updateCompany = (id: string, data: CompanyUpdate) => apiPut<Company>(`/api/companies/${id}`, data)
+export const deleteCompany = (id: string) => apiDelete<null>(`/api/companies/${id}`)
 
 // lib/api/jobs.ts
 export const fetchJobs = (params: JobQueryParams) => apiGet<Job[]>('/api/jobs', params)

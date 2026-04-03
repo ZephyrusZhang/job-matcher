@@ -14,7 +14,7 @@
 backend/
 ├── pyproject.toml              # uv 项目配置
 ├── config/
-│   ├── companies.yml           # 目标公司配置（公司名称 + 招聘页 URL + 采集频率）
+│   ├── companies.yml           # 种子公司配置（仅首次启动时迁移到数据库）
 │   └── settings.yml            # 应用配置（LLM、调度、限制等）
 ├── app/
 │   ├── main.py                 # FastAPI 入口，挂载路由 + 生命周期事件
@@ -32,6 +32,7 @@ backend/
 │   │   ├── chat.py
 │   │   └── crawl.py
 │   ├── models/                 # 数据库模型（SQLite 表映射，纯数据类）
+│   │   ├── company.py
 │   │   ├── job.py
 │   │   ├── favorite.py
 │   │   ├── resume.py
@@ -39,7 +40,7 @@ backend/
 │   │   ├── chat.py
 │   │   └── crawl_task.py
 │   ├── routers/                # 路由层（薄层，仅参数校验 + 调用 service）
-│   │   ├── companies.py        # GET /api/companies
+│   │   ├── companies.py        # GET/POST/PUT/DELETE /api/companies
 │   │   ├── jobs.py             # GET /api/jobs, /api/jobs/{id}, /search, /suggest
 │   │   ├── favorites.py        # POST/DELETE/GET /api/favorites
 │   │   ├── resume.py           # POST/GET/DELETE /api/resume
@@ -49,7 +50,7 @@ backend/
 │   │   ├── crawl.py            # POST /api/crawl/trigger, GET /api/crawl/tasks
 │   │   └── settings.py         # GET/PATCH /api/settings
 │   ├── services/               # 业务逻辑层（核心逻辑）
-│   │   ├── company_service.py  # 读取 YAML 配置，查询公司列表 + 统计
+│   │   ├── company_service.py  # 公司 CRUD + 内存缓存 + 爬取状态查询
 │   │   ├── job_service.py      # 岗位查询、搜索、自动补全
 │   │   ├── favorite_service.py # 收藏增删查 + 概要统计
 │   │   ├── resume_service.py   # 上传覆盖 + 级联清空 + 解析
@@ -96,12 +97,27 @@ backend/
 
 ## 2. SQLite 表设计
 
+### 2.0 companies — 公司表
+
+```sql
+CREATE TABLE companies (
+    id                   TEXT PRIMARY KEY,              -- 公司唯一标识（如 bytedance）
+    name                 TEXT NOT NULL,                 -- 公司中文名称
+    career_url           TEXT NOT NULL,                 -- 招聘页 URL
+    crawl_interval_hours INTEGER NOT NULL DEFAULT 12,   -- 采集频率（小时）
+    created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+> 首次启动时自动从 `config/companies.yml` 迁移种子数据到此表。后续通过 API 管理。
+
 ### 2.1 jobs — 岗位表
 
 ```sql
 CREATE TABLE jobs (
     id                 TEXT PRIMARY KEY,                -- UUID
-    company_id         TEXT NOT NULL,                   -- 对应 YAML 中的公司 id
+    company_id         TEXT NOT NULL,                   -- 对应 companies 表中的公司 id
     title              TEXT NOT NULL,                   -- 岗位名称
     category           TEXT NOT NULL,                   -- 岗位方向（算法/后端/前端/...）
     location           TEXT,                            -- 工作地点
@@ -227,7 +243,7 @@ report 重新生成（某公司某类型）
 
 ### 3.1 核心理念
 
-**零适配器设计**：不为每家公司编写单独的适配器/adapter。用户只需在 `config/companies.yml` 中配置公司名称和招聘页 URL，系统通过统一管线完成全部流程。
+**零适配器设计**：不为每家公司编写单独的适配器/adapter。用户只需在前端设置页面添加公司名称和招聘页 URL，系统通过统一管线完成全部流程。
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
@@ -685,23 +701,25 @@ crawl:
   concurrent_companies: 2              # 同时爬取的公司数
 ```
 
-### 6.2 config/companies.yml
+### 6.2 config/companies.yml（种子数据）
+
+> 此文件仅在数据库 `companies` 表为空时用于初始化种子数据。后续公司管理通过 API 进行。
 
 ```yaml
 companies:
   - id: bytedance
     name: 字节跳动
-    career_url: "https://jobs.bytedance.com/experienced/position?..."
+    career_url: "https://jobs.bytedance.com/campus/position"
     crawl_interval_hours: 12
 
-  - id: meituan
-    name: 美团
-    career_url: "https://zhaopin.meituan.com/..."
+  - id: tencent
+    name: 腾讯
+    career_url: "https://join.qq.com/post.html"
     crawl_interval_hours: 24
 
-  - id: alibaba
-    name: 阿里巴巴
-    career_url: "https://talent.alibaba.com/..."
+  - id: xiaohongshu
+    name: 小红书
+    career_url: "https://job.xiaohongshu.com/campus"
     crawl_interval_hours: 12
 ```
 
@@ -738,26 +756,20 @@ class CrawlConfig(BaseModel):
     max_scroll_attempts: int = 20
     concurrent_companies: int = 2
 
-class CompanyConfig(BaseModel):
-    id: str
-    name: str
-    career_url: str
-    crawl_interval_hours: int = 12
-
 class AppConfig(BaseModel):
     server: ServerConfig
     database: DatabaseConfig
     uploads: UploadConfig
     llm: LLMConfig
     crawl: CrawlConfig
-    companies: list[CompanyConfig]
 
 def load_config() -> AppConfig:
     """
     加载配置：
-    1. 读取 config/settings.yml 和 config/companies.yml
+    1. 读取 config/settings.yml
     2. 解析 ${ENV_VAR} 占位符，替换为环境变量值
     3. 用 Pydantic 校验并返回 AppConfig 实例
+    注意：公司配置已移至数据库，不再从 YAML 加载。
     """
 ```
 
@@ -804,6 +816,14 @@ class JobNotFoundError(AppError):
 class ReportNotFoundError(AppError):
     def __init__(self):
         super().__init__("REPORT_NOT_FOUND", "报告不存在", 404)
+
+class CompanyNotFoundError(AppError):
+    def __init__(self):
+        super().__init__("COMPANY_NOT_FOUND", "公司不存在", 404)
+
+class CompanyExistsError(AppError):
+    def __init__(self):
+        super().__init__("COMPANY_EXISTS", "公司ID已存在", 409)
 ```
 
 ### 7.2 全局异常处理器
