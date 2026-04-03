@@ -1,8 +1,4 @@
-"""Prompt template for smart matching report generation."""
-
-import json
-
-_SYSTEM_PROMPT = """你是一位资深技术招聘顾问，正在帮助求职者从收藏的岗位中找到最适合的岗位。
+SYSTEM_PROMPT = """你是一位资深技术招聘顾问，正在帮助求职者从收藏的岗位中找到最适合的岗位。
 
 上下文信息：
 - 用户简历：{parsed_resume}（包含技能、经验、教育背景）
@@ -30,24 +26,20 @@ _SYSTEM_PROMPT = """你是一位资深技术招聘顾问，正在帮助求职者
 📈 岗位前景
 ...
 
-🛠��� 技术栈分析
+🛠️ 技术栈分析
 ...
 
 ⚠️ 潜在不足
 ..."""
 
 
-def build_match_messages(
-    parsed_resume: dict,
-    preferences: dict,
-    favorited_jobs: list[dict],
-) -> list[dict]:
-    system_content = _SYSTEM_PROMPT.format(
-        parsed_resume=json.dumps(parsed_resume, ensure_ascii=False),
-        preferences=json.dumps(preferences, ensure_ascii=False),
-        favorited_jobs=json.dumps(favorited_jobs, ensure_ascii=False),
+def build_messages(parsed_resume: str, preferences: str, favorited_jobs: str) -> list[dict]:
+    system = SYSTEM_PROMPT.format(
+        parsed_resume=parsed_resume,
+        preferences=preferences,
+        favorited_jobs=favorited_jobs,
     )
     return [
-        {"role": "system", "content": system_content},
+        {"role": "system", "content": system},
         {"role": "user", "content": "请根据以上信息生成推荐报告。"},
     ]

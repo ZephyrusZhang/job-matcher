@@ -3,23 +3,13 @@ companies:
     name: 字节跳动
     career_url: "https://jobs.bytedance.com/campus/position"
     crawl_interval_hours: 12
-    max_pages: 3
-    # job_card_selector 留空，由 Agent 自动发现
 
   - id: tencent
     name: 腾讯
     career_url: "https://join.qq.com/post.html"
-    crawl_interval_hours: 12
-    max_pages: 2
-    # job_card_selector 留空，由 Agent 自动发现
-
-  - id: meituan
-    name: 美团
-    career_url: "https://zhaopin.meituan.com/"
     crawl_interval_hours: 24
-    max_pages: -1
 
-  - id: alibaba
-    name: 阿里巴巴
-    career_url: "https://talent.alibaba.com/"
+  - id: xiaohongshu
+    name: 小红书
+    career_url: "https://job.xiaohongshu.com/campus"
     crawl_interval_hours: 12

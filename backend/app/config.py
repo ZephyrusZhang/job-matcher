@@ -1,5 +1,3 @@
-"""Configuration loading from YAML files with environment variable substitution."""
-
 import os
 import re
 from pathlib import Path
@@ -29,10 +27,10 @@ class UploadConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    base_url: str = "http://localhost:11434/v1"
-    api_key: str = "not-needed"
-    model: str = "qwen2.5"
-    model_report: str = "qwen2.5"
+    api_key: str = ""
+    base_url: str | None = None
+    model: str = "gpt-4o-mini"
+    model_report: str = "gpt-4o"
     max_tokens_report: int = 4096
     max_tokens_chat: int = 2048
     temperature: float = 0.7
@@ -43,8 +41,6 @@ class CrawlConfig(BaseModel):
     page_load_timeout: int = 30000
     max_scroll_attempts: int = 20
     concurrent_companies: int = 2
-    agent_learning_pages: int = 1   # Agent 分析的最大页数
-    agent_lock_threshold: int = 1   # 连续一致次数阈值后锁定
 
 
 class CompanyConfig(BaseModel):
@@ -52,56 +48,63 @@ class CompanyConfig(BaseModel):
     name: str
     career_url: str
     crawl_interval_hours: int = 12
-    max_pages: int = -1  # 爬取页数，-1 表示全部爬取
-    # 可选 hint：手动指定岗位卡片 CSS 选择器，跳过 Agent 分析。留空则由 Agent 自动发现。
-    job_card_selector: str = ""
 
 
 class AppConfig(BaseModel):
-    server: ServerConfig
-    database: DatabaseConfig
-    uploads: UploadConfig
-    llm: LLMConfig
-    crawl: CrawlConfig
-    companies: list[CompanyConfig]
+    server: ServerConfig = ServerConfig()
+    database: DatabaseConfig = DatabaseConfig()
+    uploads: UploadConfig = UploadConfig()
+    llm: LLMConfig = LLMConfig()
+    crawl: CrawlConfig = CrawlConfig()
+    companies: list[CompanyConfig] = []
 
 
-_ENV_PATTERN = re.compile(r"\$\{(\w+)(?::-(.*?))?\}")
+_ENV_VAR_PATTERN = re.compile(r"\$\{(\w+)\}")
 
 
-def _resolve_env_vars(obj):
-    """Recursively resolve ${ENV_VAR} and ${ENV_VAR:-default} placeholders."""
+def _resolve_env_vars(value: str) -> str:
+    """Replace ${ENV_VAR} placeholders with environment variable values."""
+    def replacer(match: re.Match) -> str:
+        env_name = match.group(1)
+        return os.environ.get(env_name, "")
+    return _ENV_VAR_PATTERN.sub(replacer, value)
+
+
+def _resolve_env_recursive(obj):
+    """Recursively resolve env vars in a nested dict/list structure."""
     if isinstance(obj, str):
-        return _ENV_PATTERN.sub(
-            lambda m: os.environ.get(m.group(1)) or m.group(2) or m.group(0), obj
-        )
+        return _resolve_env_vars(obj)
     if isinstance(obj, dict):
-        return {k: _resolve_env_vars(v) for k, v in obj.items()}
+        return {k: _resolve_env_recursive(v) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [_resolve_env_vars(item) for item in obj]
+        return [_resolve_env_recursive(item) for item in obj]
     return obj
 
 
-def load_config(
-    settings_path: Path | None = None,
-    companies_path: Path | None = None,
-) -> AppConfig:
-    """Load and validate configuration from YAML files."""
-    base_dir = Path(__file__).parent.parent
-    load_dotenv(base_dir / ".env")
-    if settings_path is None:
-        settings_path = base_dir / "config" / "settings.yml"
-    if companies_path is None:
-        companies_path = base_dir / "config" / "companies.yml"
+def load_config(config_dir: str | None = None) -> AppConfig:
+    """Load and merge settings.yml + companies.yml into AppConfig."""
+    if config_dir is None:
+        config_dir = str(Path(__file__).resolve().parent.parent / "config")
 
-    with open(settings_path) as f:
-        settings_data = yaml.safe_load(f)
+    # Load .env from backend/ root (next to config/)
+    env_path = Path(config_dir).parent / ".env"
+    load_dotenv(env_path, override=False)
 
-    with open(companies_path) as f:
-        companies_data = yaml.safe_load(f)
+    settings_path = Path(config_dir) / "settings.yml"
+    companies_path = Path(config_dir) / "companies.yml"
 
-    settings_data = _resolve_env_vars(settings_data)
-    companies_data = _resolve_env_vars(companies_data)
+    settings_data = {}
+    if settings_path.exists():
+        with open(settings_path) as f:
+            settings_data = yaml.safe_load(f) or {}
+
+    companies_data = {}
+    if companies_path.exists():
+        with open(companies_path) as f:
+            companies_data = yaml.safe_load(f) or {}
+
+    settings_data = _resolve_env_recursive(settings_data)
+    companies_data = _resolve_env_recursive(companies_data)
 
     merged = {**settings_data, "companies": companies_data.get("companies", [])}
     return AppConfig(**merged)

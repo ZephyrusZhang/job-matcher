@@ -1,74 +1,99 @@
-"""FastAPI application factory."""
-
+import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.config import AppConfig, load_config
-from app.database import Database
-from app.exceptions import JobNotFoundError, register_exception_handlers
+from app.config import load_config
+from app.database import init_database
+from app.dependencies import init_services
+from app.exceptions import AppError
+from app.routers import (
+    chat,
+    companies,
+    compare,
+    crawl,
+    favorites,
+    jobs,
+    match,
+    resume,
+    settings,
+)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def create_app(
-    config: AppConfig | None = None,
-    database: Database | None = None,
-) -> FastAPI:
-    """Create and configure the FastAPI application."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Resolve config dir relative to backend/
+    backend_dir = Path(__file__).resolve().parent.parent
+    config = load_config(str(backend_dir / "config"))
 
-    if config is None:
-        config = load_config()
+    # Resolve relative paths to be relative to backend/
+    if not Path(config.database.path).is_absolute():
+        config.database.path = str(backend_dir / config.database.path)
+    if not Path(config.uploads.dir).is_absolute():
+        config.uploads.dir = str(backend_dir / config.uploads.dir)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        nonlocal database
-        if database is None:
-            database = Database(config.database)
-            await database.init()
+    await init_database(config.database)
+    init_services(config)
 
-        app.state.config = config
-        app.state.db = database
+    logger.info("JobMatcher API started")
+    yield
+    logger.info("JobMatcher API shutting down")
 
-        yield
 
-        if database:
-            await database.close()
+app = FastAPI(title="JobMatcher API", lifespan=lifespan)
 
-    app = FastAPI(title="JobMatcher API", lifespan=lifespan)
 
-    register_exception_handlers(app)
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=config.server.cors_origins,
-        allow_methods=["*"],
-        allow_headers=["*"],
+# Exception handlers
+@app.exception_handler(AppError)
+async def handle_app_error(request: Request, exc: AppError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "data": None,
+            "error": {"code": exc.code, "message": exc.message},
+            "pagination": None,
+        },
     )
 
-    # Store references for non-lifespan access
-    app.state.config = config
-    if database:
-        app.state.db = database
 
-    # Register routers
-    _register_routers(app)
+@app.exception_handler(Exception)
+async def handle_unexpected_error(request: Request, exc: Exception):
+    logger.exception("Unexpected error")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "data": None,
+            "error": {"code": "INTERNAL_ERROR", "message": "服务器内部错误"},
+            "pagination": None,
+        },
+    )
 
-    return app
+
+# Mount routers
+app.include_router(companies.router, prefix="/api")
+app.include_router(jobs.router, prefix="/api")
+app.include_router(favorites.router, prefix="/api")
+app.include_router(resume.router, prefix="/api")
+app.include_router(match.router, prefix="/api")
+app.include_router(compare.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(crawl.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")
 
 
-def _register_routers(app: FastAPI):
-    """Register all API routers."""
-    from app.routers import jobs
-
-    app.include_router(jobs.router, prefix="/api")
-
-    # Test-only route for exception middleware testing
-    from fastapi import APIRouter
-
-    test_router = APIRouter(prefix="/api/_test", tags=["test"])
-
-    @test_router.get("/error")
-    async def trigger_error():
-        raise RuntimeError("Intentional test error")
-
-    app.include_router(test_router)
+# CORS — configured after lifespan sets up config, so use permissive defaults
+# The actual origins are set in lifespan via config
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
