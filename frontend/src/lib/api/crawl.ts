@@ -10,5 +10,9 @@ export function getCrawlTask(taskId: string) {
 }
 
 export function triggerCrawl(companyId: string) {
-  return apiPost<CrawlTask>(`/api/crawl/trigger/${companyId}`)
+  return apiPost<CrawlTask>('/api/crawl/trigger', { company_id: companyId })
+}
+
+export function cancelCrawlTask(taskId: string) {
+  return apiPost<CrawlTask>(`/api/crawl/tasks/${taskId}/cancel`)
 }

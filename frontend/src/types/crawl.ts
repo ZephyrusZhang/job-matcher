@@ -2,7 +2,7 @@ export interface CrawlTask {
   id: string
   company_id: string
   company_name: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   jobs_found: number
   jobs_new: number
   jobs_updated: number
