@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
 import { PageContainer } from "@/components/layout/PageContainer"
 import { CompanySelector } from "@/components/jobs/CompanySelector"
 import { ResumeUploader } from "./ResumeUploader"
@@ -9,7 +10,7 @@ import { PreferencesForm } from "./PreferencesForm"
 import { GenerateButton } from "./GenerateButton"
 import { ReportRenderer } from "./ReportRenderer"
 import { JobDetailPanel } from "@/components/jobs/JobDetailPanel"
-import { Star, MapPin, X } from "lucide-react"
+import { Star, MapPin, X, RotateCcw } from "lucide-react"
 import { CATEGORY_COLORS } from "@/lib/constants"
 import type { Company } from "@/types/company"
 import type { FavoriteSummary, FavoriteItem } from "@/types/favorite"
@@ -22,6 +23,8 @@ interface SSEEvent {
   event: string
   data: Record<string, unknown>
 }
+
+type ViewMode = "form" | "chat"
 
 interface AnalysisPageLayoutProps {
   title: string
@@ -51,15 +54,14 @@ export function AnalysisPageLayout({
   const [interest, setInterest] = useState("")
   const [additional, setAdditional] = useState("")
 
-  // Favorited jobs for current company
   const [favoritedJobs, setFavoritedJobs] = useState<FavoriteItem[]>([])
-
-  // Job detail drawer state
   const [detailJobId, setDetailJobId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
 
+  // View mode: form or chat
+  const [viewMode, setViewMode] = useState<ViewMode>("form")
+
   // Report state
-  const [report, setReport] = useState<Report | null>(null)
   const [streamContent, setStreamContent] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [reportId, setReportId] = useState<string | null>(null)
@@ -69,6 +71,7 @@ export function AnalysisPageLayout({
   const [chatInput, setChatInput] = useState("")
   const [isChatStreaming, setIsChatStreaming] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   // Fetch companies + favorites summary
   useEffect(() => {
@@ -80,14 +83,12 @@ export function AnalysisPageLayout({
       .then((d) => { if (d.success) setFavoriteSummary(d.data) })
   }, [])
 
-  // Fetch resume
   useEffect(() => {
     fetch(`${API_BASE}/api/resume`)
       .then((r) => r.json())
       .then((d) => { if (d.success) setResume(d.data) })
   }, [])
 
-  // Fetch favorited jobs when company changes
   const fetchFavoritedJobs = useCallback((companyId: string) => {
     fetch(`${API_BASE}/api/favorites?company_id=${companyId}`)
       .then((r) => r.json())
@@ -103,50 +104,17 @@ export function AnalysisPageLayout({
   }, [selectedCompanyId, fetchFavoritedJobs])
 
   const handleRemoveFavorite = async (jobId: string) => {
-    // Optimistic remove
     setFavoritedJobs((prev) => prev.filter((j) => j.job_id !== jobId))
     try {
       await fetch(`${API_BASE}/api/favorites/${jobId}`, { method: "DELETE" })
       window.dispatchEvent(new Event("favorites-changed"))
-      // Refresh summary
       fetch(`${API_BASE}/api/favorites/summary`)
         .then((r) => r.json())
         .then((d) => { if (d.success) setFavoriteSummary(d.data) })
     } catch {
-      // Rollback on error
       if (selectedCompanyId) fetchFavoritedJobs(selectedCompanyId)
     }
   }
-
-  // Fetch existing report when company changes
-  useEffect(() => {
-    if (!selectedCompanyId) return
-    fetch(`${API_BASE}${reportEndpoint}?company_id=${selectedCompanyId}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success && d.data) {
-          setReport(d.data)
-          setStreamContent(d.data.content)
-          setReportId(d.data.report_id)
-          // Load chat history
-          fetch(`${API_BASE}/api/chat/history?report_id=${d.data.report_id}`)
-            .then((r) => r.json())
-            .then((cd) => {
-              if (cd.success && cd.data?.messages) {
-                setChatMessages(cd.data.messages.map((m: { role: string; content: string }) => ({
-                  role: m.role,
-                  content: m.content,
-                })))
-              }
-            })
-        } else {
-          setReport(null)
-          setStreamContent("")
-          setReportId(null)
-          setChatMessages([])
-        }
-      })
-  }, [selectedCompanyId, reportEndpoint])
 
   // SSE parsing helper
   const consumeSSE = useCallback(async (url: string, body: unknown) => {
@@ -155,7 +123,6 @@ export function AnalysisPageLayout({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-
     if (!res.ok || !res.body) throw new Error("SSE request failed")
 
     const reader = res.body.getReader()
@@ -182,24 +149,21 @@ export function AnalysisPageLayout({
             setReportId(parsed.data.report_id as string)
           } else if (event === "chunk") {
             setStreamContent((prev) => prev + (parsed.data.content as string))
-          } else if (event === endEvent) {
-            // Done
-          } else if (event === "chat_start") {
-            // Chat streaming started
-          } else if (event === "chat_end") {
-            // Chat streaming done
           }
         }
       }
     }
-  }, [startEvent, endEvent])
+  }, [startEvent])
 
   const handleGenerate = async () => {
     if (!selectedCompanyId || !interest.trim()) return
+
+    // Switch to chat view immediately
+    setViewMode("chat")
     setIsGenerating(true)
     setStreamContent("")
-    setReport(null)
     setChatMessages([])
+    setReportId(null)
 
     try {
       await consumeSSE(generateEndpoint, {
@@ -209,6 +173,13 @@ export function AnalysisPageLayout({
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleRegenerate = () => {
+    setViewMode("form")
+    setStreamContent("")
+    setChatMessages([])
+    setReportId(null)
   }
 
   const handleSendChat = async () => {
@@ -225,14 +196,12 @@ export function AnalysisPageLayout({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ report_id: reportId, message: userMsg }),
       })
-
       if (!res.ok || !res.body) throw new Error("Chat SSE failed")
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ""
 
-      // Add placeholder for assistant
       setChatMessages((prev) => [...prev, { role: "assistant", content: "" }])
 
       while (true) {
@@ -265,62 +234,63 @@ export function AnalysisPageLayout({
     }
   }
 
-  // Disabled conditions
+  // Auto scroll to bottom on new messages
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  }, [chatMessages, streamContent])
+
   const favCount = favoriteSummary.find((s) => s.company_id === selectedCompanyId)?.count ?? 0
   const isDisabled = !selectedCompanyId || !resume || favCount === 0 || !interest.trim()
 
-  const showReport = streamContent.length > 0 || report !== null
-  const showChat = showReport && !isGenerating
-
   return (
     <PageContainer>
-      <div className="space-y-[var(--gap-section)]">
-        {/* Page Header */}
-        <div>
-          <h1 className="text-xl font-medium text-text-primary">{title}</h1>
-          <p className="text-sm text-text-secondary mt-1">{description}</p>
-        </div>
-
-        {/* Input Section */}
-        <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6 space-y-6">
-          {/* Company Selector */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-text-primary">选择公司</label>
-            <CompanySelector
-              companies={companies}
-              value={selectedCompanyId}
-              onChange={setSelectedCompanyId}
-              showFavoriteCount
-              favoriteSummary={favoriteSummary}
-            />
+      {viewMode === "form" ? (
+        /* ===== FORM VIEW ===== */
+        <div className="space-y-[var(--gap-section)]">
+          <div>
+            <h1 className="text-xl font-medium text-white">{title}</h1>
+            <p className="text-sm text-neutral-400 mt-1">{description}</p>
           </div>
 
-          {/* Favorited Jobs Horizontal List */}
-          {selectedCompanyId && favoritedJobs.length > 0 && (
+          <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6 space-y-6">
+            {/* Company Selector */}
             <div className="space-y-3">
-              <label className="text-sm font-medium text-text-primary flex items-center gap-2">
-                <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
-                已收藏的岗位（{favoritedJobs.length}）
-              </label>
-              <div className="relative">
-                <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1" style={{ scrollbarWidth: "thin", scrollbarColor: "var(--border-default) transparent" }}>
+              <label className="text-sm font-medium text-white">选择公司</label>
+              <CompanySelector
+                companies={companies}
+                value={selectedCompanyId}
+                onChange={setSelectedCompanyId}
+                showFavoriteCount
+                favoriteSummary={favoriteSummary}
+              />
+            </div>
+
+            {/* Favorited Jobs */}
+            {selectedCompanyId && favoritedJobs.length > 0 && (
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-white flex items-center gap-2">
+                  <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
+                  已收藏的岗位（{favoritedJobs.length}）
+                </label>
+                <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1" style={{ scrollbarWidth: "thin", scrollbarColor: "#262626 transparent" }}>
                   {favoritedJobs.map((job) => (
                     <div
                       key={job.job_id}
                       onClick={() => { setDetailJobId(job.job_id); setDetailOpen(true) }}
-                      className="shrink-0 w-[240px] bg-black border border-neutral-800 rounded-lg p-3.5 space-y-2 hover:border-zinc-600 transition-colors cursor-pointer"
+                      className="shrink-0 w-[240px] bg-black border border-neutral-800 rounded-lg p-3.5 space-y-2 hover:border-neutral-600 transition-colors cursor-pointer"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm text-text-primary font-medium line-clamp-2 leading-snug flex-1">{job.title}</p>
+                        <p className="text-sm text-white font-medium line-clamp-2 leading-snug flex-1">{job.title}</p>
                         <button
-                          onClick={() => handleRemoveFavorite(job.job_id)}
-                          className="shrink-0 mt-0.5 p-0.5 rounded text-text-muted hover:text-tag-red hover:bg-tag-red-bg transition-colors cursor-pointer"
-                          title="取消收藏"
+                          onClick={(e) => { e.stopPropagation(); handleRemoveFavorite(job.job_id) }}
+                          className="shrink-0 mt-0.5 p-0.5 rounded text-neutral-600 hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-text-secondary">
+                      <div className="flex items-center gap-3 text-xs text-neutral-500">
                         {job.location && (
                           <span className="flex items-center gap-1">
                             <MapPin className="h-3 w-3 shrink-0" />
@@ -335,122 +305,131 @@ export function AnalysisPageLayout({
                   ))}
                 </div>
               </div>
+            )}
+            {selectedCompanyId && favoritedJobs.length === 0 && (
+              <div className="flex flex-col items-center py-4 gap-2">
+                <Star className="h-8 w-8 text-neutral-700" />
+                <p className="text-sm text-neutral-500">该公司暂无收藏岗位</p>
+                <p className="text-xs text-neutral-600">请先在岗位总览页收藏感兴趣的岗位</p>
+              </div>
+            )}
+
+            <Separator className="bg-neutral-800" />
+
+            {/* Resume */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-white">上传简历</label>
+              <ResumeUploader
+                resume={resume}
+                onUploadSuccess={(r) => setResume(r)}
+              />
             </div>
-          )}
-          {selectedCompanyId && favoritedJobs.length === 0 && (
-            <div className="flex flex-col items-center py-4 gap-2">
-              <Star className="h-8 w-8 text-text-muted" />
-              <p className="text-sm text-text-muted">该公司暂无收藏岗位</p>
-              <p className="text-xs text-text-muted">请先在岗位总览页收藏感兴趣的岗位</p>
+
+            <Separator className="bg-neutral-800" />
+
+            {/* Preferences */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-white">偏好与要求</label>
+              <PreferencesForm
+                interest={interest}
+                additional={additional}
+                onInterestChange={setInterest}
+                onAdditionalChange={setAdditional}
+              />
             </div>
-          )}
 
-          <Separator className="bg-neutral-800" />
-
-          {/* Resume Upload */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-text-primary">上传简历</label>
-            <ResumeUploader
-              resume={resume}
-              onUploadSuccess={(r) => {
-                setResume(r)
-                setReport(null)
-                setStreamContent("")
-                setChatMessages([])
-              }}
-            />
-          </div>
-
-          <Separator className="bg-neutral-800" />
-
-          {/* Preferences */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-text-primary">偏好与要求</label>
-            <PreferencesForm
-              interest={interest}
-              additional={additional}
-              onInterestChange={setInterest}
-              onAdditionalChange={setAdditional}
-            />
-          </div>
-
-          {/* Generate Button */}
-          <div className="flex justify-center pt-2">
-            <GenerateButton
-              label={generateButtonLabel}
-              isGenerating={isGenerating}
-              disabled={isDisabled}
-              onClick={handleGenerate}
-            />
+            {/* Generate */}
+            <div className="flex justify-center pt-2">
+              <GenerateButton
+                label={generateButtonLabel}
+                isGenerating={false}
+                disabled={isDisabled}
+                onClick={handleGenerate}
+              />
+            </div>
           </div>
         </div>
-
-        {/* Report Section */}
-        {showReport && (
-          <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-medium text-text-primary">{reportTitle}</h2>
-              {report?.created_at && (
-                <span className="text-xs text-text-muted">
-                  生成时间: {new Date(report.created_at).toLocaleDateString("zh-CN")}
-                </span>
-              )}
+      ) : (
+        /* ===== CHAT VIEW (Report + Conversation) ===== */
+        <div className="flex flex-col h-[calc(100vh-48px)]">
+          {/* Header bar */}
+          <div className="flex items-center justify-between py-4 shrink-0">
+            <div>
+              <h1 className="text-lg font-medium text-white">{reportTitle}</h1>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                {selectedCompanyId && companies.find(c => c.id === selectedCompanyId)?.name}
+              </p>
             </div>
-            <Separator className="bg-neutral-800" />
-            <ReportRenderer content={streamContent} isStreaming={isGenerating} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRegenerate}
+              className="border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800"
+            >
+              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+              重新生成
+            </Button>
           </div>
-        )}
 
-        {/* Chat Section */}
-        {showChat && (
-          <div className="bg-neutral-950 rounded-lg border border-neutral-800 overflow-hidden animate-in fade-in duration-300">
-            <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
-              {chatMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-[var(--radius-sm)] px-4 py-3 ${
-                      msg.role === "user"
-                        ? "bg-blue-950/50 border border-blue-900/30 text-white"
-                        : "bg-transparent text-white"
-                    }`}
-                  >
-                    {msg.role === "assistant" ? (
-                      <ReportRenderer content={msg.content} isStreaming={isChatStreaming && i === chatMessages.length - 1} />
-                    ) : (
-                      <p className="text-sm">{msg.content}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Composer */}
-            <div className="border-t border-neutral-800 p-4">
-              <div className="flex gap-3">
-                <input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendChat()}
-                  placeholder={isChatStreaming ? "正在回复..." : "输入追问..."}
-                  disabled={isChatStreaming}
-                  className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2 text-sm text-white placeholder:text-neutral-500 outline-none disabled:opacity-50 focus:border-neutral-600"
-                />
-                <button
-                  onClick={handleSendChat}
-                  disabled={isChatStreaming || !chatInput.trim()}
-                  className="text-blue-400 text-sm font-medium px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed hover:text-blue-300"
-                >
-                  发送
-                </button>
+          {/* Messages area */}
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto space-y-4 pb-4"
+            style={{ scrollbarWidth: "thin", scrollbarColor: "#262626 transparent" }}
+          >
+            {/* Report as first "assistant" message */}
+            {streamContent && (
+              <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6">
+                <ReportRenderer content={streamContent} isStreaming={isGenerating} />
               </div>
+            )}
+
+            {/* Chat messages */}
+            {chatMessages.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-lg px-4 py-3 ${
+                    msg.role === "user"
+                      ? "bg-blue-950/50 border border-blue-900/30 text-white"
+                      : "bg-neutral-950 border border-neutral-800 text-white"
+                  }`}
+                >
+                  {msg.role === "assistant" ? (
+                    <ReportRenderer content={msg.content} isStreaming={isChatStreaming && i === chatMessages.length - 1} />
+                  ) : (
+                    <p className="text-sm">{msg.content}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Composer — always visible in chat view, disabled while generating */}
+          <div className="shrink-0 border-t border-neutral-800 pt-4 pb-2">
+            <div className="flex gap-3">
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendChat()}
+                placeholder={isGenerating ? "报告生成中..." : isChatStreaming ? "正在回复..." : "基于报告内容进行追问..."}
+                disabled={isGenerating || isChatStreaming}
+                className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-neutral-500 outline-none disabled:opacity-50 focus:border-neutral-600"
+              />
+              <Button
+                onClick={handleSendChat}
+                disabled={isGenerating || isChatStreaming || !chatInput.trim()}
+                className="bg-white text-black hover:bg-neutral-200 disabled:opacity-50 px-5"
+              >
+                发送
+              </Button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Job Detail Drawer */}
       <JobDetailPanel
