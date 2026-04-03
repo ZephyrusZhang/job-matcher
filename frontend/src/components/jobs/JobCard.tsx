@@ -29,9 +29,9 @@ export function JobCard({ job, isFavorited, onToggleFavorite, onClick }: JobCard
   return (
     <div
       className={cn(
-        "bg-bg-secondary border border-border-default rounded-[var(--radius)] overflow-hidden",
-        "hover:border-accent-main cursor-pointer transition-colors",
-        "p-[var(--spacing-card)] flex flex-col gap-2.5"
+        "bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden",
+        "hover:border-neutral-600 cursor-pointer transition-colors",
+        "p-4 flex flex-col gap-2.5"
       )}
       onClick={() => onClick(job.id)}
     >
@@ -50,8 +50,8 @@ export function JobCard({ job, isFavorited, onToggleFavorite, onClick }: JobCard
             className={cn(
               "h-4 w-4 transition-colors",
               isFavorited
-                ? "fill-accent-main text-accent-main"
-                : "text-text-secondary hover:text-accent-main"
+                ? "fill-yellow-500 text-yellow-500"
+                : "text-text-muted hover:text-yellow-500"
             )}
           />
         </button>

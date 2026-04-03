@@ -66,9 +66,9 @@ export default function SettingsPage() {
         <h1 className="text-xl font-medium text-text-primary">设置</h1>
 
         {/* Display Preferences */}
-        <div className="bg-bg-secondary rounded-[var(--radius)] border border-border-default p-6">
+        <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6">
           <h2 className="text-base font-medium text-text-primary">显示偏好</h2>
-          <Separator className="bg-border-subtle my-4" />
+          <Separator className="bg-neutral-800 my-4" />
 
           <div className="space-y-6">
             <div className="space-y-3">
@@ -105,7 +105,7 @@ export default function SettingsPage() {
                   if (val) updateSetting({ language: val })
                 }}
               >
-                <SelectTrigger className="w-[200px] bg-bg-tertiary border-border-default text-text-primary rounded-[var(--radius-sm)]">
+                <SelectTrigger className="w-[200px] bg-neutral-900 border-neutral-800 text-white rounded-lg">
                   <SelectValue placeholder="选择语言">{language === "zh" ? "中文" : "English"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-bg-elevated border-border-default">
@@ -118,14 +118,14 @@ export default function SettingsPage() {
         </div>
 
         {/* Company Table */}
-        <div className="bg-bg-secondary rounded-[var(--radius)] border border-border-default p-6">
+        <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6">
           <h2 className="text-base font-medium text-text-primary">目标公司</h2>
-          <Separator className="bg-border-subtle my-4" />
+          <Separator className="bg-neutral-800 my-4" />
           <p className="text-sm text-text-secondary mb-4">以下公司的岗位将被自动采集</p>
 
           <Table>
             <TableHeader>
-              <TableRow className="border-b border-border-subtle hover:bg-transparent">
+              <TableRow className="border-b border-neutral-800 hover:bg-transparent">
                 <TableHead className="text-text-secondary text-xs uppercase">公司名称</TableHead>
                 <TableHead className="text-text-secondary text-xs uppercase">采集频率</TableHead>
                 <TableHead className="text-text-secondary text-xs uppercase">上次采集</TableHead>
@@ -133,7 +133,7 @@ export default function SettingsPage() {
             </TableHeader>
             <TableBody>
               {companies.map((company) => (
-                <TableRow key={company.id} className="border-b border-border-subtle hover:bg-transparent">
+                <TableRow key={company.id} className="border-b border-neutral-800 hover:bg-transparent">
                   <TableCell className="text-sm text-text-primary">{company.name}</TableCell>
                   <TableCell className="text-sm text-text-primary">
                     每 {company.crawl_interval_hours} 小时

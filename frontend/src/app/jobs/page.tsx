@@ -226,7 +226,7 @@ function JobsPageContent() {
               onKeyDown={(e) => { if (e.key === "Enter") doSearch(searchInput); if (e.key === "Escape") setShowSuggestions(false) }}
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               placeholder="搜索岗位..."
-              className="pl-9 pr-9 bg-bg-tertiary border-none text-text-primary placeholder:text-text-muted rounded-[var(--radius-sm)] h-10"
+              className="pl-9 pr-9 bg-neutral-900 border border-neutral-800 text-white placeholder:text-neutral-500 rounded-lg h-10 focus:border-neutral-600"
             />
             {searchInput && (
               <button
@@ -265,7 +265,7 @@ function JobsPageContent() {
             </span>
             <button
               onClick={() => { setSearchInput(""); router.push("/jobs") }}
-              className="text-accent-main text-xs hover:underline cursor-pointer"
+              className="text-zinc-400 text-xs hover:text-text-primary hover:underline cursor-pointer"
             >
               清除搜索
             </button>

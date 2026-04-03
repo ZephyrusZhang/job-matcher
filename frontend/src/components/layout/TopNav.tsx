@@ -70,7 +70,7 @@ export function TopNav() {
 
   return (
     <header className="flex h-14 items-center gap-4 border-b border-border-default bg-bg-secondary px-4 shrink-0">
-      <span className="text-accent-main font-semibold text-base whitespace-nowrap">
+      <span className="text-text-primary font-semibold text-base whitespace-nowrap">
         JobMatcher
       </span>
 

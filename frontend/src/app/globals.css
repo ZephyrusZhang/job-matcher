@@ -4,35 +4,35 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* JobMatcher Design Tokens — Pure Dark Mode (Claude-style) */
+/* JobMatcher — High-contrast Dashboard Dark Theme */
 :root {
-  /* Background */
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #2a2a2a;
-  --bg-tertiary: #333333;
-  --bg-elevated: #3a3a3a;
+  /* Background layers: pure black → subtle gray for cards */
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #171717;
+  --bg-elevated: #1a1a1a;
 
-  /* Border */
-  --border-default: #3d3d3d;
-  --border-subtle: #2e2e2e;
+  /* Border — clearly visible on black */
+  --border-default: #262626;
+  --border-subtle: #1a1a1a;
 
-  /* Text */
-  --text-primary: #e8e4de;
-  --text-secondary: #a8a29e;
-  --text-muted: #6b6560;
+  /* Text — pure white for maximum contrast */
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
 
-  /* Accent — warm orange/sand */
-  --accent: #d4a27a;
-  --accent-hover: #e0b48f;
-  --accent-muted: rgba(212, 162, 122, 0.15);
+  /* Primary action — white */
+  --accent: #ffffff;
+  --accent-hover: #d4d4d8;
+  --accent-muted: rgba(255, 255, 255, 0.06);
 
   /* Semantic Colors */
-  --red: #ef8a7a;
-  --red-bg: rgba(239, 138, 122, 0.15);
-  --blue: #7aafef;
-  --blue-bg: rgba(122, 175, 239, 0.15);
-  --green: #7aefa0;
-  --yellow: #efd97a;
+  --red: #ef4444;
+  --red-bg: rgba(239, 68, 68, 0.15);
+  --blue: #3b82f6;
+  --blue-bg: rgba(59, 130, 246, 0.15);
+  --green: #22c55e;
+  --yellow: #eab308;
 
   /* Typography */
   --font-sans: 'Inter', system-ui, sans-serif;
@@ -41,14 +41,14 @@
   --spacing-page: 24px;
   --spacing-card: 16px;
   --gap-grid: 16px;
-  --gap-section: 24px;
+  --gap-section: 20px;
 
   /* Radius */
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-xs: 4px;
+  --radius: 0.5rem;
+  --radius-sm: 0.375rem;
+  --radius-xs: 0.25rem;
 
-  /* Map to shadcn CSS variables */
+  /* shadcn mapping */
   --background: var(--bg-primary);
   --foreground: var(--text-primary);
   --card: var(--bg-secondary);
@@ -56,27 +56,27 @@
   --popover: var(--bg-elevated);
   --popover-foreground: var(--text-primary);
   --primary: var(--text-primary);
-  --primary-foreground: var(--bg-primary);
-  --secondary: var(--bg-secondary);
+  --primary-foreground: #000000;
+  --secondary: var(--bg-tertiary);
   --secondary-foreground: var(--text-primary);
   --muted: var(--bg-tertiary);
   --muted-foreground: var(--text-muted);
-  --accent-color: var(--accent);
-  --accent-foreground: var(--bg-primary);
+  --accent-color: var(--bg-tertiary);
+  --accent-foreground: var(--text-primary);
   --destructive: var(--red);
   --border: var(--border-default);
-  --input: var(--bg-tertiary);
-  --ring: var(--accent);
+  --input: var(--border-default);
+  --ring: #3b82f6;
 
-  /* Sidebar */
-  --sidebar: var(--bg-secondary);
+  /* Sidebar — slightly lighter than main bg, with high-contrast active */
+  --sidebar: #0a0a0a;
   --sidebar-foreground: var(--text-secondary);
-  --sidebar-primary: var(--accent);
-  --sidebar-primary-foreground: var(--bg-primary);
-  --sidebar-accent: var(--accent-muted);
-  --sidebar-accent-foreground: var(--accent);
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-default);
-  --sidebar-ring: var(--accent);
+  --sidebar-ring: #3b82f6;
 }
 
 @theme inline {
@@ -110,9 +110,9 @@
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-sm);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.2);
+  --radius-xl: calc(var(--radius) * 1.5);
 
-  /* Custom colors */
+  /* Custom color aliases */
   --color-bg-primary: var(--bg-primary);
   --color-bg-secondary: var(--bg-secondary);
   --color-bg-tertiary: var(--bg-tertiary);
@@ -138,7 +138,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-bg-primary text-text-primary;
+    @apply bg-bg-primary text-text-primary antialiased;
     font-family: var(--font-sans);
   }
   html {
@@ -146,22 +146,17 @@
   }
 }
 
-/* Global transition for interactive elements */
-button,
-a,
-[role="button"],
-input,
-select,
-textarea {
-  transition: all 150ms ease;
-}
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #404040; }
 
-/* Streaming cursor animation */
+/* Streaming cursor */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
-
 .streaming-cursor::after {
   content: '▊';
   animation: blink 1s ease-in-out infinite;

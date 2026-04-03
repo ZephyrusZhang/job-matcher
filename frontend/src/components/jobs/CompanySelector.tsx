@@ -39,12 +39,12 @@ export function CompanySelector({
 
   return (
     <Select value={value ?? null} onValueChange={(val) => { if (val) onChange(val) }}>
-      <SelectTrigger className="w-full bg-bg-tertiary border-border-default rounded-[var(--radius-sm)] text-text-primary">
+      <SelectTrigger className="w-full bg-neutral-900 border-neutral-800 rounded-lg text-white">
         <SelectValue placeholder="选择公司">
           {selectedCompany ? getDisplayText(selectedCompany) : "选择公司"}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="bg-bg-elevated border-border-default">
+      <SelectContent className="bg-neutral-900 border-neutral-800">
         {companies.map((company) => {
           const favCount = getFavoriteCount(company.id)
           const isDisabled = showFavoriteCount && favCount === 0

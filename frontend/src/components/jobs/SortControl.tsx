@@ -25,10 +25,10 @@ export function SortControl({ value, onChange }: SortControlProps) {
 
   return (
     <Select value={value} onValueChange={(val) => { if (val) onChange(val) }}>
-      <SelectTrigger className="w-[140px] bg-bg-tertiary border-border-default text-text-primary text-sm rounded-[var(--radius-sm)] h-9">
+      <SelectTrigger className="w-[140px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
         <SelectValue placeholder={currentLabel}>{currentLabel}</SelectValue>
       </SelectTrigger>
-      <SelectContent className="bg-bg-elevated border-border-default">
+      <SelectContent className="bg-neutral-900 border-neutral-800">
         {SORT_OPTIONS.map((opt) => (
           <SelectItem key={opt.value} value={opt.value} className="text-text-primary text-sm">
             {opt.label}

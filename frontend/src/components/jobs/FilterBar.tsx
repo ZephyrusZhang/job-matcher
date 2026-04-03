@@ -80,12 +80,12 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
         {/* Company Selector (inline) */}
         {companies && onCompanyChange && (
           <Select value={selectedCompanyId ?? null} onValueChange={(val) => { if (val) onCompanyChange(val) }}>
-            <SelectTrigger className="w-[200px] bg-bg-tertiary border-border-default text-text-primary text-sm rounded-[var(--radius-sm)] h-9">
+            <SelectTrigger className="w-[200px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
               <SelectValue placeholder="选择公司">
                 {selectedCompany ? `${selectedCompany.name}（${selectedCompany.job_count}）` : "选择公司"}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent className="bg-bg-elevated border-border-default">
+            <SelectContent className="bg-neutral-900 border-neutral-800">
               {companies.map((c) => (
                 <SelectItem key={c.id} value={c.id} className="text-text-primary text-sm">
                   {c.name}（{c.job_count} 个岗位）
@@ -104,10 +104,10 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
             }
           }}
         >
-          <SelectTrigger className="w-[130px] bg-bg-tertiary border-border-default text-text-primary text-sm rounded-[var(--radius-sm)] h-9">
+          <SelectTrigger className="w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="岗位方向">岗位方向</SelectValue>
           </SelectTrigger>
-          <SelectContent className="bg-bg-elevated border-border-default">
+          <SelectContent className="bg-neutral-900 border-neutral-800">
             {JOB_CATEGORIES.map((cat) => (
               <SelectItem key={cat} value={cat} className="text-text-primary text-sm">
                 {cat}{filters.categories.includes(cat) ? " ✓" : ""}
@@ -118,10 +118,10 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
 
         {/* Location */}
         <Select value={filters.location ?? ""} onValueChange={(val) => onChange({ ...filters, location: val ?? null })}>
-          <SelectTrigger className="w-[120px] bg-bg-tertiary border-border-default text-text-primary text-sm rounded-[var(--radius-sm)] h-9">
+          <SelectTrigger className="w-[120px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="地点">{filters.location ?? "地点"}</SelectValue>
           </SelectTrigger>
-          <SelectContent className="bg-bg-elevated border-border-default">
+          <SelectContent className="bg-neutral-900 border-neutral-800">
             {locations.map((loc) => (
               <SelectItem key={loc} value={loc} className="text-text-primary text-sm">{loc}</SelectItem>
             ))}
@@ -130,10 +130,10 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
 
         {/* Job Type */}
         <Select value={filters.jobType ?? ""} onValueChange={(val) => onChange({ ...filters, jobType: val ?? null })}>
-          <SelectTrigger className="w-[130px] bg-bg-tertiary border-border-default text-text-primary text-sm rounded-[var(--radius-sm)] h-9">
+          <SelectTrigger className="w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="岗位类型">{jobTypeLabel ?? "岗位类型"}</SelectValue>
           </SelectTrigger>
-          <SelectContent className="bg-bg-elevated border-border-default">
+          <SelectContent className="bg-neutral-900 border-neutral-800">
             {JOB_TYPES.map((t) => (
               <SelectItem key={t.value} value={t.value} className="text-text-primary text-sm">{t.label}</SelectItem>
             ))}
@@ -142,10 +142,10 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
 
         {/* Posted Within */}
         <Select value={filters.postedWithin ?? ""} onValueChange={(val) => onChange({ ...filters, postedWithin: val ?? null })}>
-          <SelectTrigger className="w-[130px] bg-bg-tertiary border-border-default text-text-primary text-sm rounded-[var(--radius-sm)] h-9">
+          <SelectTrigger className="w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="发布时间">{postedLabel ?? "发布时间"}</SelectValue>
           </SelectTrigger>
-          <SelectContent className="bg-bg-elevated border-border-default">
+          <SelectContent className="bg-neutral-900 border-neutral-800">
             {POSTED_WITHIN.map((t) => (
               <SelectItem key={t.value} value={t.value} className="text-text-primary text-sm">{t.label}</SelectItem>
             ))}

@@ -73,12 +73,12 @@ export function FloatingFavorites() {
       {/* Floating Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-accent-main text-bg-primary rounded-full px-4 py-3 font-medium text-sm shadow-lg hover:bg-accent-hover transition-colors cursor-pointer"
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-neutral-900 text-white border border-neutral-700 rounded-full px-4 py-3 font-medium text-sm shadow-lg hover:bg-neutral-800 transition-colors cursor-pointer"
       >
-        <Star className="h-4 w-4 fill-current" />
+        <Star className="h-4 w-4 fill-current text-yellow-500" />
         收藏
         {favorites.length > 0 && (
-          <span className="bg-bg-primary text-accent-main text-xs font-semibold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
+          <span className="bg-text-primary text-bg-primary text-xs font-semibold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
             {favorites.length}
           </span>
         )}
@@ -94,11 +94,11 @@ export function FloatingFavorites() {
           />
 
           {/* Panel */}
-          <div className="fixed bottom-20 right-6 z-50 w-[380px] max-h-[70vh] bg-bg-secondary border border-border-default rounded-[var(--radius)] shadow-xl flex flex-col overflow-hidden">
+          <div className="fixed bottom-20 right-6 z-50 w-[380px] max-h-[70vh] bg-neutral-950 border border-neutral-800 rounded-lg shadow-xl flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle shrink-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 shrink-0">
               <h3 className="text-sm font-medium text-text-primary flex items-center gap-2">
-                <Star className="h-4 w-4 text-accent-main fill-accent-main" />
+                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
                 收藏的岗位（{favorites.length}）
               </h3>
               <button onClick={() => setIsOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
@@ -121,7 +121,7 @@ export function FloatingFavorites() {
                     {jobs.map((job) => (
                       <div
                         key={job.job_id}
-                        className="bg-bg-primary border border-border-default rounded-[var(--radius-sm)] p-3 space-y-1.5 hover:border-accent-main/50 transition-colors cursor-pointer"
+                        className="bg-black border border-neutral-800 rounded-lg p-3 space-y-1.5 hover:border-zinc-600 transition-colors cursor-pointer"
                         onClick={() => handleCardClick(job.job_id)}
                       >
                         <div className="flex items-start justify-between gap-2">

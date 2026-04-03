@@ -11,7 +11,7 @@ export function FilterTag({ label, onRemove }: FilterTagProps) {
       {label}
       <button
         onClick={onRemove}
-        className="hover:text-accent-main cursor-pointer"
+        className="hover:text-zinc-300 cursor-pointer"
         aria-label={`移除筛选: ${label}`}
       >
         <X className="h-3 w-3" />

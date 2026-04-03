@@ -24,7 +24,7 @@ export function ReportRenderer({ content, isStreaming }: ReportRendererProps) {
             <h2 className="text-base font-medium text-text-primary mt-5 mb-2">{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-sm font-medium text-accent-main border-l-2 border-accent-main pl-3 mt-4 mb-2">
+            <h3 className="text-sm font-medium text-text-primary border-l-2 border-text-muted pl-3 mt-4 mb-2">
               {children}
             </h3>
           ),
@@ -48,7 +48,7 @@ export function ReportRenderer({ content, isStreaming }: ReportRendererProps) {
           ),
           hr: () => <hr className="border-border-subtle my-4" />,
           blockquote: ({ children }) => (
-            <blockquote className="border-l-2 border-accent-main pl-3 text-sm text-text-secondary italic my-3">
+            <blockquote className="border-l-2 border-zinc-600 pl-3 text-sm text-text-secondary italic my-3">
               {children}
             </blockquote>
           ),

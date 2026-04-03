@@ -26,7 +26,7 @@ interface JobDetailPanelProps {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h4 className="text-accent-main text-sm font-medium border-l-2 border-accent-main pl-3">
+    <h4 className="text-text-primary text-sm font-medium border-l-2 border-text-muted pl-3">
       {children}
     </h4>
   )
@@ -64,7 +64,7 @@ export function JobDetailPanel({
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="right"
-        className="w-[45vw] min-w-[500px] max-w-[800px] bg-bg-secondary border-l border-border-default p-0 flex flex-col"
+        className="w-[45vw] min-w-[500px] max-w-[800px] bg-neutral-950 border-l border-neutral-800 p-0 flex flex-col"
       >
         {isLoading ? (
           <div className="p-6 space-y-4">
@@ -167,21 +167,21 @@ export function JobDetailPanel({
             </div>
 
             {/* Footer */}
-            <div className="sticky bottom-0 bg-bg-secondary border-t border-border-subtle p-4 flex gap-3">
+            <div className="sticky bottom-0 bg-neutral-950 border-t border-neutral-800 p-4 flex gap-3">
               <Button
                 variant="outline"
                 onClick={() => onToggleFavorite(job.id)}
                 className={cn(
                   "flex-1",
                   isFavorited
-                    ? "bg-accent-muted text-accent-main border-accent-main/30"
+                    ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/30"
                     : "text-text-primary border-border-default"
                 )}
               >
                 <Star
                   className={cn(
                     "h-4 w-4 mr-2",
-                    isFavorited && "fill-accent-main"
+                    isFavorited && "fill-yellow-500 text-yellow-500"
                   )}
                 />
                 {isFavorited ? "已收藏" : "收藏"}

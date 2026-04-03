@@ -23,7 +23,7 @@ export function PreferencesForm({
           value={interest}
           onChange={(e) => onInterestChange(e.target.value)}
           placeholder="例如：对前端开发方向最感兴趣，也愿意尝试全栈方向..."
-          className="bg-bg-tertiary border-none text-text-primary placeholder:text-text-muted rounded-[var(--radius-sm)] min-h-[80px] resize-none"
+          className="bg-neutral-900 border border-neutral-800 text-white placeholder:text-neutral-500 rounded-lg min-h-[80px] resize-none focus:border-neutral-600"
         />
       </div>
       <div className="space-y-2">
@@ -35,7 +35,7 @@ export function PreferencesForm({
           value={additional}
           onChange={(e) => onAdditionalChange(e.target.value)}
           placeholder="例如：希望有远程或混合办公选项，偏好有导师制度的团队..."
-          className="bg-bg-tertiary border-none text-text-primary placeholder:text-text-muted rounded-[var(--radius-sm)] min-h-[80px] resize-none"
+          className="bg-neutral-900 border border-neutral-800 text-white placeholder:text-neutral-500 rounded-lg min-h-[80px] resize-none focus:border-neutral-600"
         />
       </div>
     </div>

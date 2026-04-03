@@ -280,7 +280,7 @@ export function AnalysisPageLayout({
         </div>
 
         {/* Input Section */}
-        <div className="bg-bg-secondary rounded-[var(--radius)] border border-border-default p-6 space-y-6">
+        <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6 space-y-6">
           {/* Company Selector */}
           <div className="space-y-3">
             <label className="text-sm font-medium text-text-primary">选择公司</label>
@@ -297,7 +297,7 @@ export function AnalysisPageLayout({
           {selectedCompanyId && favoritedJobs.length > 0 && (
             <div className="space-y-3">
               <label className="text-sm font-medium text-text-primary flex items-center gap-2">
-                <Star className="h-3.5 w-3.5 text-accent-main fill-accent-main" />
+                <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
                 已收藏的岗位（{favoritedJobs.length}）
               </label>
               <div className="relative">
@@ -306,7 +306,7 @@ export function AnalysisPageLayout({
                     <div
                       key={job.job_id}
                       onClick={() => { setDetailJobId(job.job_id); setDetailOpen(true) }}
-                      className="shrink-0 w-[240px] bg-bg-primary border border-border-default rounded-[var(--radius-sm)] p-3.5 space-y-2 hover:border-accent-main/50 transition-colors cursor-pointer"
+                      className="shrink-0 w-[240px] bg-black border border-neutral-800 rounded-lg p-3.5 space-y-2 hover:border-zinc-600 transition-colors cursor-pointer"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm text-text-primary font-medium line-clamp-2 leading-snug flex-1">{job.title}</p>
@@ -344,7 +344,7 @@ export function AnalysisPageLayout({
             </div>
           )}
 
-          <Separator className="bg-border-subtle" />
+          <Separator className="bg-neutral-800" />
 
           {/* Resume Upload */}
           <div className="space-y-3">
@@ -360,7 +360,7 @@ export function AnalysisPageLayout({
             />
           </div>
 
-          <Separator className="bg-border-subtle" />
+          <Separator className="bg-neutral-800" />
 
           {/* Preferences */}
           <div className="space-y-3">
@@ -386,7 +386,7 @@ export function AnalysisPageLayout({
 
         {/* Report Section */}
         {showReport && (
-          <div className="bg-bg-secondary rounded-[var(--radius)] border border-border-default p-6 space-y-4">
+          <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-medium text-text-primary">{reportTitle}</h2>
               {report?.created_at && (
@@ -395,14 +395,14 @@ export function AnalysisPageLayout({
                 </span>
               )}
             </div>
-            <Separator className="bg-border-subtle" />
+            <Separator className="bg-neutral-800" />
             <ReportRenderer content={streamContent} isStreaming={isGenerating} />
           </div>
         )}
 
         {/* Chat Section */}
         {showChat && (
-          <div className="bg-bg-secondary rounded-[var(--radius)] border border-border-default overflow-hidden animate-in fade-in duration-300">
+          <div className="bg-neutral-950 rounded-lg border border-neutral-800 overflow-hidden animate-in fade-in duration-300">
             <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
               {chatMessages.map((msg, i) => (
                 <div
@@ -428,7 +428,7 @@ export function AnalysisPageLayout({
             </div>
 
             {/* Composer */}
-            <div className="border-t border-border-subtle p-4">
+            <div className="border-t border-neutral-800 p-4">
               <div className="flex gap-3">
                 <input
                   value={chatInput}
@@ -436,12 +436,12 @@ export function AnalysisPageLayout({
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendChat()}
                   placeholder={isChatStreaming ? "正在回复..." : "输入追问..."}
                   disabled={isChatStreaming}
-                  className="flex-1 bg-bg-tertiary rounded-[var(--radius-sm)] px-4 py-2 text-sm text-text-primary placeholder:text-text-muted border-none outline-none disabled:opacity-50"
+                  className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2 text-sm text-white placeholder:text-neutral-500 outline-none disabled:opacity-50 focus:border-neutral-600"
                 />
                 <button
                   onClick={handleSendChat}
                   disabled={isChatStreaming || !chatInput.trim()}
-                  className="text-accent-main text-sm font-medium px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="text-blue-400 text-sm font-medium px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed hover:text-blue-300"
                 >
                   发送
                 </button>

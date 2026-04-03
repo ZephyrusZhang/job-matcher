@@ -15,7 +15,7 @@ export function GenerateButton({ label, isGenerating, disabled, onClick }: Gener
     <Button
       onClick={onClick}
       disabled={disabled || isGenerating}
-      className="bg-accent-main text-bg-primary font-medium rounded-[var(--radius-sm)] px-6 py-2 hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
+      className="bg-text-primary text-bg-primary font-medium rounded-[var(--radius-sm)] px-6 py-2 hover:bg-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {isGenerating ? (
         <>
