@@ -62,9 +62,9 @@
 
 ---
 
-## 模块 1：公司列表（只读）
+## 模块 1：公司管理
 
-公司信息来源于后端 YAML 配置文件，前端仅可读取。
+公司信息存储在数据库中，前端可通过设置页面进行增删改。首次启动时自动从 `config/companies.yml` 迁移种子数据。
 
 ### GET /api/companies
 
@@ -84,15 +84,8 @@
       "career_url": "https://jobs.bytedance.com/...",
       "crawl_interval_hours": 12,
       "last_crawled_at": "2026-03-29T10:00:00Z",
-      "job_count": 42
-    },
-    {
-      "id": "meituan",
-      "name": "美团",
-      "career_url": "https://zhaopin.meituan.com/...",
-      "crawl_interval_hours": 24,
-      "last_crawled_at": "2026-03-29T05:00:00Z",
-      "job_count": 28
+      "job_count": 42,
+      "crawl_status": "completed"
     }
   ],
   "error": null,
@@ -104,12 +97,86 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 公司唯一标识（YAML 中定义） |
+| `id` | `string` | 公司唯一标识 |
 | `name` | `string` | 公司中文名称 |
 | `career_url` | `string` | 招聘页 URL |
 | `crawl_interval_hours` | `int` | 采集频率（小时） |
 | `last_crawled_at` | `string \| null` | 最近一次采集时间（ISO 8601），未采集过为 `null` |
 | `job_count` | `int` | 该公司已采集的岗位数量 |
+| `crawl_status` | `string` | 爬取状态：`idle` / `pending` / `running` / `completed` / `failed` |
+
+---
+
+### POST /api/companies
+
+添加新的目标公司。
+
+**Request Body:**
+
+```json
+{
+  "id": "meituan",
+  "name": "美团",
+  "career_url": "https://zhaopin.meituan.com/...",
+  "crawl_interval_hours": 24
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 公司唯一标识（英文小写） |
+| `name` | `string` | 是 | 公司中文名称 |
+| `career_url` | `string` | 是 | 招聘页 URL |
+| `crawl_interval_hours` | `int` | 否 | 采集频率，默认 12 |
+
+**Response 201:** `data` 为 Company 对象。
+
+**Response 409:** 公司 ID 已存在（`COMPANY_EXISTS`）。
+
+---
+
+### PUT /api/companies/{company_id}
+
+更新公司信息。
+
+**Request Body:**
+
+```json
+{
+  "name": "美团",
+  "career_url": "https://zhaopin.meituan.com/new-url",
+  "crawl_interval_hours": 12
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 否 | 公司名称 |
+| `career_url` | `string` | 否 | 招聘页 URL |
+| `crawl_interval_hours` | `int` | 否 | 采集频率 |
+
+**Response 200:** `data` 为更新后的 Company 对象。
+
+**Response 404:** 公司不存在。
+
+---
+
+### DELETE /api/companies/{company_id}
+
+删除目标公司。
+
+**Response 200:**
+
+```json
+{
+  "success": true,
+  "data": null,
+  "error": null,
+  "pagination": null
+}
+```
+
+**Response 404:** 公司不存在。
 
 ---
 
@@ -791,14 +858,32 @@ data: {"message_id": "m1n2o3p4-..."}
 | `id` | `string` | 任务 UUID |
 | `company_id` | `string` | 公司 ID |
 | `company_name` | `string` | 公司名称 |
-| `status` | `string` | `pending` / `running` / `completed` / `failed` |
+| `status` | `string` | `pending` / `running` / `completed` / `failed` / `cancelled` |
 | `jobs_found` | `int` | 发现的岗位总数 |
 | `jobs_new` | `int` | 新增岗位数 |
 | `jobs_updated` | `int` | 更新岗位数 |
-| `error_message` | `string \| null` | 错误信息（仅 failed 状态） |
+| `error_message` | `string \| null` | 错误信息（failed / cancelled 状态） |
 | `started_at` | `string \| null` | 开始时间 |
 | `completed_at` | `string \| null` | 完成时间 |
 | `created_at` | `string` | 创建时间 |
+
+---
+
+### POST /api/crawl/tasks/{task_id}/cancel
+
+取消正在进行的爬取任务。后端会优雅停止：完成当前正在插入的数据，不再处理后续数据。
+
+**Path Parameters:**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `task_id` | `string` | 任务 UUID |
+
+**Response 200:** `data` 为更新后的 CrawlTask 对象（status 变为 `cancelled`）。
+
+**Response 400:** 任务不在进行中（`INVALID_STATUS`）。
+
+**Response 404:** 任务不存在。
 
 ---
 
