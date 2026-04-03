@@ -10,7 +10,7 @@ import { PreferencesForm } from "./PreferencesForm"
 import { GenerateButton } from "./GenerateButton"
 import { ReportRenderer } from "./ReportRenderer"
 import { JobDetailPanel } from "@/components/jobs/JobDetailPanel"
-import { Star, MapPin, X, RotateCcw } from "lucide-react"
+import { Star, MapPin, X, RotateCcw, Square } from "lucide-react"
 import { CATEGORY_COLORS } from "@/lib/constants"
 import type { Company } from "@/types/company"
 import type { FavoriteSummary, FavoriteItem } from "@/types/favorite"
@@ -72,6 +72,7 @@ export function AnalysisPageLayout({
   const [isChatStreaming, setIsChatStreaming] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   // Fetch companies + favorites summary
   useEffect(() => {
@@ -117,11 +118,12 @@ export function AnalysisPageLayout({
   }
 
   // SSE parsing helper
-  const consumeSSE = useCallback(async (url: string, body: unknown) => {
+  const consumeSSE = useCallback(async (url: string, body: unknown, signal?: AbortSignal) => {
     const res = await fetch(`${API_BASE}${url}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     })
     if (!res.ok || !res.body) throw new Error("SSE request failed")
 
@@ -158,20 +160,26 @@ export function AnalysisPageLayout({
   const handleGenerate = async () => {
     if (!selectedCompanyId || !interest.trim()) return
 
-    // Switch to chat view immediately
     setViewMode("chat")
     setIsGenerating(true)
     setStreamContent("")
     setChatMessages([])
     setReportId(null)
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
       await consumeSSE(generateEndpoint, {
         company_id: selectedCompanyId,
         preferences: { interest, additional: additional || undefined },
-      })
+      }, controller.signal)
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return // user stopped
+      throw e
     } finally {
       setIsGenerating(false)
+      abortRef.current = null
     }
   }
 
@@ -189,12 +197,16 @@ export function AnalysisPageLayout({
     setChatMessages((prev) => [...prev, { role: "user", content: userMsg }])
     setIsChatStreaming(true)
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
     let assistantContent = ""
     try {
       const res = await fetch(`${API_BASE}/api/chat/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ report_id: reportId, message: userMsg }),
+        signal: controller.signal,
       })
       if (!res.ok || !res.body) throw new Error("Chat SSE failed")
 
@@ -229,9 +241,20 @@ export function AnalysisPageLayout({
           }
         }
       }
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return
+      throw e
     } finally {
       setIsChatStreaming(false)
+      abortRef.current = null
     }
+  }
+
+  const handleStop = () => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setIsGenerating(false)
+    setIsChatStreaming(false)
   }
 
   // Auto scroll to bottom on new messages
@@ -419,13 +442,24 @@ export function AnalysisPageLayout({
                 disabled={isGenerating || isChatStreaming}
                 className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-neutral-500 outline-none disabled:opacity-50 focus:border-neutral-600"
               />
-              <Button
-                onClick={handleSendChat}
-                disabled={isGenerating || isChatStreaming || !chatInput.trim()}
-                className="bg-white text-black hover:bg-neutral-200 disabled:opacity-50 px-5"
-              >
-                发送
-              </Button>
+              {isGenerating || isChatStreaming ? (
+                <Button
+                  onClick={handleStop}
+                  variant="outline"
+                  className="border-red-800 text-red-400 hover:bg-red-950 hover:text-red-300 px-4"
+                >
+                  <Square className="h-3.5 w-3.5 mr-1.5 fill-current" />
+                  停止
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSendChat}
+                  disabled={!chatInput.trim()}
+                  className="bg-white text-black hover:bg-neutral-200 disabled:opacity-50 px-5"
+                >
+                  发送
+                </Button>
+              )}
             </div>
           </div>
         </div>
