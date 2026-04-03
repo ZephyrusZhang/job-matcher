@@ -25,7 +25,7 @@ async def update_task_status(
             "UPDATE crawl_tasks SET status = ?, started_at = datetime('now') WHERE id = ?",
             (status, task_id),
         )
-    elif status in ("completed", "failed"):
+    elif status in ("completed", "failed", "cancelled"):
         await db.execute(
             """UPDATE crawl_tasks SET status = ?, jobs_found = ?, jobs_new = ?,
                jobs_updated = ?, error_message = ?, completed_at = datetime('now')

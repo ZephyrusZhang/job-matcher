@@ -28,7 +28,7 @@ _crawl_service: CrawlService | None = None
 _settings_service: SettingsService | None = None
 
 
-def init_services(config: AppConfig) -> None:
+async def init_services(config: AppConfig, db_path: str) -> None:
     """Initialize all service singletons."""
     global _config, _llm_client, _company_service, _job_service
     global _favorite_service, _resume_service, _report_service
@@ -36,13 +36,21 @@ def init_services(config: AppConfig) -> None:
 
     _config = config
     _llm_client = LLMClient(config.llm)
-    _company_service = CompanyService(config.companies)
+    _company_service = CompanyService()
+
+    # Load company cache from DB
+    db = await get_db(db_path)
+    try:
+        await _company_service.refresh_cache(db)
+    finally:
+        await db.close()
+
     _job_service = JobService(_company_service)
     _favorite_service = FavoriteService(_company_service)
     _resume_service = ResumeService(config.uploads, _llm_client)
     _report_service = ReportService(_llm_client)
     _chat_service = ChatService(_llm_client)
-    _crawl_service = CrawlService(_company_service)
+    _crawl_service = CrawlService(_company_service, config)
     _settings_service = SettingsService()
 
 

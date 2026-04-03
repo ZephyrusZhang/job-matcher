@@ -1,9 +1,7 @@
 """Import crawled job data from tmp/ JSON files into the database."""
 import asyncio
-import hashlib
 import json
 import sys
-import uuid
 from pathlib import Path
 
 import aiosqlite
@@ -13,91 +11,33 @@ backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from app.config import load_config
+from app.crawl.pipeline import normalize_job
 from app.database import init_database
 
 # Mapping of JSON file names to company IDs
 FILE_COMPANY_MAP = {
-    "bytedance.json": "bytedance",
-    "tencent.json": "tencent",
-    "xhs.json": "xiaohongshu",
+    "kuaishou.json": "kuaishou",
 }
 
 
-def compute_content_hash(title: str, responsibilities: str, requirements_must: list[str]) -> str:
-    payload = f"{title}|{responsibilities}|{'|'.join(sorted(requirements_must))}"
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
-def normalize_job(raw_job: dict, company_id: str) -> dict:
-    """Normalize different JSON formats into a unified schema."""
-    title = raw_job.get("title", "")
-    responsibilities = raw_job.get("responsibilities", "")
-    requirements_str = raw_job.get("requirements", "")
-
-    # Parse requirements string into must_have list
-    requirements_must = []
-    if requirements_str:
-        # Split by common delimiters
-        for line in requirements_str.replace("；", "\n").replace(";", "\n").split("\n"):
-            line = line.strip().lstrip("0123456789.、- ")
-            if line:
-                requirements_must.append(line)
-
-    # Handle XHS format differences
-    category = raw_job.get("category", "其他")
-    location = raw_job.get("location", None)
-    job_type = raw_job.get("job_type", None)
-    department = raw_job.get("department", None)
-    department_product = raw_job.get("department_product", None)
-    education = raw_job.get("education", None)
-    experience = raw_job.get("experience", None)
-    posted_date = raw_job.get("posted_date") or raw_job.get("post_date")
-    source_url = raw_job.get("source_url", "")
-    summary = raw_job.get("summary", None)
-
-    # For XHS, try to extract extra info from raw field
-    if "raw" in raw_job:
-        raw = raw_job["raw"]
-        if not job_type and raw.get("jobType"):
-            job_type = "intern"  # XHS campus positions are all intern
-
-    # Ensure job_type is normalized
-    if job_type and job_type not in ("fulltime", "intern", "parttime", "contract"):
-        job_type = "intern"  # Default for campus recruitment
-
-    content_hash = compute_content_hash(title, responsibilities, requirements_must)
-
-    return {
-        "id": str(uuid.uuid4()),
-        "company_id": company_id,
-        "title": title,
-        "category": category,
-        "location": location,
-        "job_type": job_type,
-        "responsibilities": responsibilities,
-        "requirements_must": requirements_must,
-        "requirements_nice": [],
-        "department": department,
-        "department_product": department_product,
-        "education": education,
-        "experience": experience,
-        "posted_date": posted_date,
-        "source_url": source_url,
-        "summary": summary,
-        "content_hash": content_hash,
-    }
-
-
-async def import_file(db: aiosqlite.Connection, file_path: Path, company_id: str) -> tuple[int, int]:
-    """Import jobs from a JSON file. Returns (total, inserted)."""
+async def import_file(db: aiosqlite.Connection, file_path: Path, company_id: str) -> tuple[int, int, int]:
+    """Import jobs from a JSON file. Returns (total, inserted, skipped)."""
     with open(file_path) as f:
         data = json.load(f)
 
-    jobs = data.get("jobs", [])
+    raw_jobs = data if isinstance(data, list) else data.get("jobs", [])
     inserted = 0
+    skipped = 0
 
-    for raw_job in jobs:
+    for raw_job in raw_jobs:
         job = normalize_job(raw_job, company_id)
+
+        # Skip non-tech jobs
+        if not job["category"]:
+            raw_cat = raw_job.get("category", "")
+            print(f"    Skipped (unmapped category): '{job['title']}', raw_category='{raw_cat}'")
+            skipped += 1
+            continue
 
         # Check if content_hash already exists
         async with db.execute(
@@ -129,7 +69,7 @@ async def import_file(db: aiosqlite.Connection, file_path: Path, company_id: str
         inserted += 1
 
     await db.commit()
-    return len(jobs), inserted
+    return len(raw_jobs), inserted, skipped
 
 
 async def main():
@@ -155,9 +95,9 @@ async def main():
             print(f"  Skipping {filename}: file not found")
             continue
 
-        total, inserted = await import_file(db, file_path, company_id)
+        total, inserted, skipped = await import_file(db, file_path, company_id)
         total_imported += inserted
-        print(f"  {filename}: {total} jobs found, {inserted} new jobs imported")
+        print(f"  {filename}: {total} jobs found, {inserted} inserted, {skipped} skipped (unmapped category)")
 
     await db.close()
     print(f"\nTotal: {total_imported} jobs imported successfully")

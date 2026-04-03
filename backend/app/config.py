@@ -43,20 +43,12 @@ class CrawlConfig(BaseModel):
     concurrent_companies: int = 2
 
 
-class CompanyConfig(BaseModel):
-    id: str
-    name: str
-    career_url: str
-    crawl_interval_hours: int = 12
-
-
 class AppConfig(BaseModel):
     server: ServerConfig = ServerConfig()
     database: DatabaseConfig = DatabaseConfig()
     uploads: UploadConfig = UploadConfig()
     llm: LLMConfig = LLMConfig()
     crawl: CrawlConfig = CrawlConfig()
-    companies: list[CompanyConfig] = []
 
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{(\w+)\}")
@@ -91,20 +83,12 @@ def load_config(config_dir: str | None = None) -> AppConfig:
     load_dotenv(env_path, override=False)
 
     settings_path = Path(config_dir) / "settings.yml"
-    companies_path = Path(config_dir) / "companies.yml"
 
     settings_data = {}
     if settings_path.exists():
         with open(settings_path) as f:
             settings_data = yaml.safe_load(f) or {}
 
-    companies_data = {}
-    if companies_path.exists():
-        with open(companies_path) as f:
-            companies_data = yaml.safe_load(f) or {}
-
     settings_data = _resolve_env_recursive(settings_data)
-    companies_data = _resolve_env_recursive(companies_data)
 
-    merged = {**settings_data, "companies": companies_data.get("companies", [])}
-    return AppConfig(**merged)
+    return AppConfig(**settings_data)

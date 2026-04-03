@@ -35,6 +35,16 @@ async def list_crawl_tasks(
     )
 
 
+@router.post("/crawl/tasks/{task_id}/cancel")
+async def cancel_crawl_task(
+    task_id: str,
+    db: aiosqlite.Connection = Depends(get_database),
+    service: CrawlService = Depends(get_crawl_service),
+):
+    task = await service.cancel(db, task_id)
+    return ApiResponse.ok(data=task.model_dump())
+
+
 @router.get("/crawl/tasks/{task_id}")
 async def get_crawl_task(
     task_id: str,
