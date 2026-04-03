@@ -40,3 +40,13 @@ class JobNotFoundError(AppError):
 class ReportNotFoundError(AppError):
     def __init__(self):
         super().__init__("REPORT_NOT_FOUND", "报告不存在", 404)
+
+
+class CompanyNotFoundError(AppError):
+    def __init__(self):
+        super().__init__("COMPANY_NOT_FOUND", "公司不存在", 404)
+
+
+class CompanyExistsError(AppError):
+    def __init__(self):
+        super().__init__("COMPANY_EXISTS", "公司ID已存在", 409)

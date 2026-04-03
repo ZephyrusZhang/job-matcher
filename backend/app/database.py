@@ -1,9 +1,20 @@
 import aiosqlite
 from pathlib import Path
 
+import yaml
+
 from app.config import DatabaseConfig
 
 _CREATE_TABLES_SQL = """
+CREATE TABLE IF NOT EXISTS companies (
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    career_url           TEXT NOT NULL,
+    crawl_interval_hours INTEGER NOT NULL DEFAULT 12,
+    created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
     id                 TEXT PRIMARY KEY,
     company_id         TEXT NOT NULL,
@@ -101,6 +112,34 @@ async def init_database(config: DatabaseConfig) -> None:
         await db.execute("PRAGMA foreign_keys = ON")
         await db.executescript(_CREATE_TABLES_SQL)
         await db.commit()
+        await _seed_companies_from_yaml(db, db_path)
+
+
+async def _seed_companies_from_yaml(
+    db: aiosqlite.Connection, db_path: Path
+) -> None:
+    """One-time migration: seed companies from YAML if table is empty."""
+    async with db.execute("SELECT COUNT(*) FROM companies") as cursor:
+        count = (await cursor.fetchone())[0]
+    if count > 0:
+        return
+
+    # Look for companies.yml relative to the db file
+    config_dir = db_path.parent.parent / "config"
+    yaml_path = config_dir / "companies.yml"
+    if not yaml_path.exists():
+        return
+
+    with open(yaml_path) as f:
+        data = yaml.safe_load(f) or {}
+
+    for c in data.get("companies", []):
+        await db.execute(
+            """INSERT OR IGNORE INTO companies (id, name, career_url, crawl_interval_hours)
+               VALUES (?, ?, ?, ?)""",
+            (c["id"], c["name"], c["career_url"], c.get("crawl_interval_hours", 12)),
+        )
+    await db.commit()
 
 
 async def get_db(db_path: str) -> aiosqlite.Connection:

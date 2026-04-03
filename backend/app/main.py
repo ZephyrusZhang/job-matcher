@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
         config.uploads.dir = str(backend_dir / config.uploads.dir)
 
     await init_database(config.database)
-    init_services(config)
+    await init_services(config, config.database.path)
 
     logger.info("JobMatcher API started")
     yield
