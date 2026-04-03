@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef, Suspense } from "react"
+import { useEffect, useState, useCallback, useRef, Suspense, type RefCallback } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Inbox, SearchX, Search, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,6 @@ import { SortControl } from "@/components/jobs/SortControl"
 import { JobCardGrid } from "@/components/jobs/JobCardGrid"
 import { JobDetailPanel } from "@/components/jobs/JobDetailPanel"
 import { EmptyState } from "@/components/common/EmptyState"
-import { Button } from "@/components/ui/button"
 import type { Job } from "@/types/job"
 import type { Company } from "@/types/company"
 import type { PaginationMeta } from "@/types/api"
@@ -138,11 +137,11 @@ function JobsPageContent() {
     setFilters({ categories: [], location: null, jobType: null, postedWithin: null })
   }
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     if (pagination && pagination.page < pagination.total_pages) {
       fetchJobs(pagination.page + 1, true)
     }
-  }
+  }, [pagination, fetchJobs])
 
   const handleToggleFavorite = async (jobId: string) => {
     const wasFavorited = favoriteIds.has(jobId)
@@ -164,6 +163,7 @@ function JobsPageContent() {
           body: JSON.stringify({ job_id: jobId }),
         })
       }
+      window.dispatchEvent(new Event("favorites-changed"))
     } catch {
       // Rollback
       setFavoriteIds((prev) => {
@@ -212,6 +212,29 @@ function JobsPageContent() {
   }, [])
 
   const hasMore = pagination ? pagination.page < pagination.total_pages : false
+
+  // Infinite scroll with IntersectionObserver
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  const observerRef = useRef<IntersectionObserver | null>(null)
+
+  useEffect(() => {
+    if (observerRef.current) observerRef.current.disconnect()
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore && !isLoading) {
+          handleLoadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    if (loadMoreRef.current) {
+      observerRef.current.observe(loadMoreRef.current)
+    }
+
+    return () => observerRef.current?.disconnect()
+  }, [hasMore, isLoadingMore, isLoading, handleLoadMore])
 
   return (
     <PageContainer>
@@ -322,21 +345,16 @@ function JobsPageContent() {
           />
         )}
 
-        {/* Load More */}
+        {/* Infinite scroll sentinel */}
         {hasMore && (
-          <div className="flex justify-center pt-4">
-            <Button
-              variant="outline"
-              onClick={handleLoadMore}
-              disabled={isLoadingMore}
-              className="text-text-primary border-border-default"
-            >
-              {isLoadingMore ? "加载中..." : "加载更多"}
-            </Button>
+          <div ref={loadMoreRef} className="flex justify-center py-6">
+            {isLoadingMore && (
+              <span className="text-sm text-text-muted">加载中...</span>
+            )}
           </div>
         )}
         {!hasMore && jobs.length > 0 && !isLoading && (
-          <p className="text-center text-text-muted text-sm">已加载全部岗位</p>
+          <p className="text-center text-text-muted text-sm py-4">已加载全部岗位</p>
         )}
 
         {/* Detail Panel */}

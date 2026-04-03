@@ -26,7 +26,7 @@ export function Sidebar() {
         <span className="text-white font-semibold text-base tracking-tight">JobMatcher</span>
       </div>
 
-      <nav className="flex-1 flex flex-col px-3 py-3 gap-0.5">
+      <nav className="flex-1 flex flex-col px-3 py-3 gap-2">
         {navItems.map((item) => {
           const isActive = pathname === item.href
           const Icon = item.icon

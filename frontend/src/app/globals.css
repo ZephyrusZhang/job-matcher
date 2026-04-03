@@ -159,5 +159,6 @@
 }
 .streaming-cursor::after {
   content: '▊';
+  color: #3b82f6;
   animation: blink 1s ease-in-out infinite;
 }

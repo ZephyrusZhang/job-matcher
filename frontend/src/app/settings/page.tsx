@@ -136,7 +136,7 @@ export default function SettingsPage() {
                 <TableRow key={company.id} className="border-b border-neutral-800 hover:bg-transparent">
                   <TableCell className="text-sm text-text-primary">{company.name}</TableCell>
                   <TableCell className="text-sm text-text-primary">
-                    每 {company.crawl_interval_hours} 小时
+                    每 <span className="text-blue-400">{company.crawl_interval_hours}</span> 小时
                   </TableCell>
                   <TableCell className="text-sm text-text-primary">
                     {formatRelativeTime(company.last_crawled_at)}

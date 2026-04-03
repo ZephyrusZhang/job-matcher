@@ -9,7 +9,8 @@ import { PreferencesForm } from "./PreferencesForm"
 import { GenerateButton } from "./GenerateButton"
 import { ReportRenderer } from "./ReportRenderer"
 import { JobDetailPanel } from "@/components/jobs/JobDetailPanel"
-import { Star, MapPin, Briefcase, X } from "lucide-react"
+import { Star, MapPin, X } from "lucide-react"
+import { CATEGORY_COLORS } from "@/lib/constants"
 import type { Company } from "@/types/company"
 import type { FavoriteSummary, FavoriteItem } from "@/types/favorite"
 import type { ResumeInfo } from "@/types/resume"
@@ -106,6 +107,7 @@ export function AnalysisPageLayout({
     setFavoritedJobs((prev) => prev.filter((j) => j.job_id !== jobId))
     try {
       await fetch(`${API_BASE}/api/favorites/${jobId}`, { method: "DELETE" })
+      window.dispatchEvent(new Event("favorites-changed"))
       // Refresh summary
       fetch(`${API_BASE}/api/favorites/summary`)
         .then((r) => r.json())
@@ -130,7 +132,7 @@ export function AnalysisPageLayout({
           fetch(`${API_BASE}/api/chat/history?report_id=${d.data.report_id}`)
             .then((r) => r.json())
             .then((cd) => {
-              if (cd.success && cd.data) {
+              if (cd.success && cd.data?.messages) {
                 setChatMessages(cd.data.messages.map((m: { role: string; content: string }) => ({
                   role: m.role,
                   content: m.content,
@@ -325,8 +327,7 @@ export function AnalysisPageLayout({
                             {job.location}
                           </span>
                         )}
-                        <span className="flex items-center gap-1">
-                          <Briefcase className="h-3 w-3 shrink-0" />
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[job.category] || "bg-neutral-800 text-neutral-400"}`}>
                           {job.category}
                         </span>
                       </div>
@@ -412,8 +413,8 @@ export function AnalysisPageLayout({
                   <div
                     className={`max-w-[80%] rounded-[var(--radius-sm)] px-4 py-3 ${
                       msg.role === "user"
-                        ? "bg-bg-tertiary text-text-primary"
-                        : "bg-transparent text-text-primary"
+                        ? "bg-blue-950/50 border border-blue-900/30 text-white"
+                        : "bg-transparent text-white"
                     }`}
                   >
                     {msg.role === "assistant" ? (

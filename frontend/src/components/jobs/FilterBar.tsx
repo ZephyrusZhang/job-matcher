@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { FilterTag } from "./FilterTag"
+import { CATEGORY_COLORS, JOB_TYPE_COLORS } from "@/lib/constants"
 import type { Company } from "@/types/company"
 
 const JOB_CATEGORIES = [
@@ -107,12 +108,19 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
           <SelectTrigger className="w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="岗位方向">岗位方向</SelectValue>
           </SelectTrigger>
-          <SelectContent className="bg-neutral-900 border-neutral-800">
-            {JOB_CATEGORIES.map((cat) => (
-              <SelectItem key={cat} value={cat} className="text-text-primary text-sm">
-                {cat}{filters.categories.includes(cat) ? " ✓" : ""}
-              </SelectItem>
-            ))}
+          <SelectContent className="bg-neutral-950 border-neutral-800 p-1.5 min-w-[160px]">
+            {JOB_CATEGORIES.map((cat) => {
+              const colors = CATEGORY_COLORS[cat] || "bg-neutral-800 text-neutral-400"
+              const selected = filters.categories.includes(cat)
+              return (
+                <SelectItem key={cat} value={cat} className={`text-sm rounded-lg mb-1 last:mb-0 py-1.5 ${colors}`}>
+                  <span className="flex items-center justify-between w-full gap-3">
+                    <span>{cat}</span>
+                    {selected && <span className="text-emerald-400">✓</span>}
+                  </span>
+                </SelectItem>
+              )
+            })}
           </SelectContent>
         </Select>
 
@@ -131,11 +139,23 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
         {/* Job Type */}
         <Select value={filters.jobType ?? ""} onValueChange={(val) => onChange({ ...filters, jobType: val ?? null })}>
           <SelectTrigger className="w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
-            <SelectValue placeholder="岗位类型">{jobTypeLabel ?? "岗位类型"}</SelectValue>
+            <SelectValue placeholder="岗位类型">
+              {filters.jobType ? (
+                <span className="flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full ${JOB_TYPE_COLORS[filters.jobType]?.dot || "bg-neutral-500"}`} />
+                  {jobTypeLabel}
+                </span>
+              ) : "岗位类型"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent className="bg-neutral-900 border-neutral-800">
             {JOB_TYPES.map((t) => (
-              <SelectItem key={t.value} value={t.value} className="text-text-primary text-sm">{t.label}</SelectItem>
+              <SelectItem key={t.value} value={t.value} className="text-text-primary text-sm">
+                <span className="flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full ${JOB_TYPE_COLORS[t.value]?.dot || "bg-neutral-500"}`} />
+                  {t.label}
+                </span>
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

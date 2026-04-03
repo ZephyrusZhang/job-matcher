@@ -24,7 +24,7 @@ export function ReportRenderer({ content, isStreaming }: ReportRendererProps) {
             <h2 className="text-base font-medium text-text-primary mt-5 mb-2">{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-sm font-medium text-text-primary border-l-2 border-text-muted pl-3 mt-4 mb-2">
+            <h3 className="text-sm font-medium text-text-primary border-l-2 border-blue-500 pl-3 mt-4 mb-2">
               {children}
             </h3>
           ),

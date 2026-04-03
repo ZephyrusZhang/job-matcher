@@ -24,9 +24,9 @@ interface JobDetailPanelProps {
   onToggleFavorite: (jobId: string) => void
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function SectionTitle({ children, color = "border-zinc-500" }: { children: React.ReactNode; color?: string }) {
   return (
-    <h4 className="text-text-primary text-sm font-medium border-l-2 border-text-muted pl-3">
+    <h4 className={`text-white text-sm font-medium border-l-2 ${color} pl-3`}>
       {children}
     </h4>
   )
@@ -110,14 +110,14 @@ export function JobDetailPanel({
               {/* Summary */}
               {job.summary && (
                 <div className="space-y-2">
-                  <SectionTitle>职位概述</SectionTitle>
+                  <SectionTitle color="border-blue-500">职位概述</SectionTitle>
                   <p className="text-sm text-text-primary leading-relaxed">{job.summary}</p>
                 </div>
               )}
 
               {/* Responsibilities */}
               <div className="space-y-2">
-                <SectionTitle>核心职责</SectionTitle>
+                <SectionTitle color="border-emerald-500">核心职责</SectionTitle>
                 <p className="text-sm text-text-primary leading-relaxed whitespace-pre-line">
                   {job.responsibilities}
                 </p>
@@ -125,7 +125,7 @@ export function JobDetailPanel({
 
               {/* Requirements */}
               <div className="space-y-2">
-                <SectionTitle>技术要求</SectionTitle>
+                <SectionTitle color="border-orange-500">技术要求</SectionTitle>
                 {job.requirements.must_have.length > 0 && (
                   <div className="space-y-1.5">
                     {job.requirements.must_have.map((s, i) => (
@@ -149,7 +149,7 @@ export function JobDetailPanel({
               {/* Team & Product */}
               {(job.department || job.department_product) && (
                 <div className="space-y-2">
-                  <SectionTitle>团队与产品</SectionTitle>
+                  <SectionTitle color="border-violet-500">团队与产品</SectionTitle>
                   {job.department && (
                     <p className="text-sm text-text-primary">
                       <span className="text-text-secondary">部门: </span>
