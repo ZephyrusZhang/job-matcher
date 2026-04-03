@@ -8,6 +8,7 @@ import { ResumeUploader } from "./ResumeUploader"
 import { PreferencesForm } from "./PreferencesForm"
 import { GenerateButton } from "./GenerateButton"
 import { ReportRenderer } from "./ReportRenderer"
+import { JobDetailPanel } from "@/components/jobs/JobDetailPanel"
 import { Star, MapPin, Briefcase, X } from "lucide-react"
 import type { Company } from "@/types/company"
 import type { FavoriteSummary, FavoriteItem } from "@/types/favorite"
@@ -51,6 +52,10 @@ export function AnalysisPageLayout({
 
   // Favorited jobs for current company
   const [favoritedJobs, setFavoritedJobs] = useState<FavoriteItem[]>([])
+
+  // Job detail drawer state
+  const [detailJobId, setDetailJobId] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   // Report state
   const [report, setReport] = useState<Report | null>(null)
@@ -300,7 +305,8 @@ export function AnalysisPageLayout({
                   {favoritedJobs.map((job) => (
                     <div
                       key={job.job_id}
-                      className="shrink-0 w-[240px] bg-bg-primary border border-border-default rounded-[var(--radius-sm)] p-3.5 space-y-2 hover:border-accent-main/50 transition-colors"
+                      onClick={() => { setDetailJobId(job.job_id); setDetailOpen(true) }}
+                      className="shrink-0 w-[240px] bg-bg-primary border border-border-default rounded-[var(--radius-sm)] p-3.5 space-y-2 hover:border-accent-main/50 transition-colors cursor-pointer"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm text-text-primary font-medium line-clamp-2 leading-snug flex-1">{job.title}</p>
@@ -444,6 +450,27 @@ export function AnalysisPageLayout({
           </div>
         )}
       </div>
+
+      {/* Job Detail Drawer */}
+      <JobDetailPanel
+        jobId={detailJobId}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        isFavorited={detailJobId ? favoritedJobs.some((j) => j.job_id === detailJobId) : false}
+        onToggleFavorite={async (jobId) => {
+          const isFav = favoritedJobs.some((j) => j.job_id === jobId)
+          if (isFav) {
+            await handleRemoveFavorite(jobId)
+          } else {
+            await fetch(`${API_BASE}/api/favorites`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ job_id: jobId }),
+            })
+            if (selectedCompanyId) fetchFavoritedJobs(selectedCompanyId)
+          }
+        }}
+      />
     </PageContainer>
   )
 }
