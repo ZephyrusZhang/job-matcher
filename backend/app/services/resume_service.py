@@ -1,125 +1,105 @@
-"""Resume upload, parsing, and management service."""
-
-import json
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
-from app.config import AppConfig
-from app.database import Database
+import aiosqlite
+from fastapi import UploadFile
+
+from app.config import LLMConfig, UploadConfig
+from app.exceptions import FileFormatError, FileTooLargeError, ResumeNotFoundError
 from app.llm.client import LLMClient
-from app.llm.prompts.parse_resume import build_parse_resume_messages
-from app.utils.file_parser import FileParser, validate_upload
+from app.llm.prompts import parse_resume
+from app.models import report as report_model
+from app.models import resume as resume_model
+from app.schemas.resume import ClearResult, ParsedResume, ResumeOut, ResumeUploadOut
+from app.utils.file_parser import FileParser
 
 logger = logging.getLogger(__name__)
 
 
 class ResumeService:
-    def __init__(self, db: Database, config: AppConfig, llm_client: LLMClient):
-        self._db = db
-        self._config = config
-        self._llm = llm_client
+    def __init__(self, upload_config: UploadConfig, llm_client: LLMClient):
+        self.upload_config = upload_config
+        self.llm_client = llm_client
 
     async def upload(
-        self,
-        file_content: bytes,
-        filename: str,
-        content_type: str,
-    ) -> dict:
-        """Upload, parse, and store resume. Cascades clear reports + messages."""
-        validate_upload(
-            filename=filename,
-            content_type=content_type,
-            size=len(file_content),
-            max_size_mb=self._config.uploads.max_size_mb,
-            allowed_types=self._config.uploads.allowed_types,
-        )
+        self, db: aiosqlite.Connection, file: UploadFile
+    ) -> ResumeUploadOut:
+        # Validate format
+        filename = file.filename or "unknown"
+        ext = Path(filename).suffix.lower()
+        if ext not in (".pdf", ".docx"):
+            raise FileFormatError()
 
-        # Save file to disk
-        upload_dir = Path(self._config.uploads.dir)
+        # Read and validate size
+        content = await file.read()
+        max_bytes = self.upload_config.max_size_mb * 1024 * 1024
+        if len(content) > max_bytes:
+            raise FileTooLargeError()
+
+        # Save file
+        upload_dir = Path(self.upload_config.dir)
         upload_dir.mkdir(parents=True, exist_ok=True)
-        file_path = upload_dir / filename
-        file_path.write_bytes(file_content)
+        file_path = upload_dir / f"resume{ext}"
+        file_path.write_bytes(content)
 
         # Extract text
-        raw_text = FileParser.extract_text(str(file_path), filename)
+        raw_text = await FileParser.extract_text(str(file_path), filename)
 
-        # LLM structured parsing
-        messages = build_parse_resume_messages(raw_text)
-        parsed = await self._llm.structured_parse(messages)
+        # LLM parse
+        messages = parse_resume.build_messages(raw_text)
+        try:
+            parsed = await self.llm_client.structured_parse(messages)
+        except Exception:
+            logger.warning("LLM resume parsing failed, using raw text only")
+            parsed = {"skills": [], "experience_years": None, "education": None}
         parsed["raw_text"] = raw_text
 
-        # Cascade clear: count before deleting
-        reports_count = await self._db.fetch_one("SELECT COUNT(*) as cnt FROM reports")
-        messages_count = await self._db.fetch_one("SELECT COUNT(*) as cnt FROM chat_messages")
-        reports_deleted = reports_count["cnt"] if reports_count else 0
-        messages_deleted = messages_count["cnt"] if messages_count else 0
+        # Cascade clear
+        reports_deleted, messages_deleted = await report_model.delete_all_reports(db)
 
-        # Delete old reports (chat_messages cascade automatically)
-        await self._db.execute("DELETE FROM reports")
+        # Upsert resume
+        await resume_model.upsert_resume(db, filename, str(file_path), parsed)
 
-        # Upsert resume (single row, id=1)
-        now = datetime.now(timezone.utc).isoformat()
-        await self._db.execute(
-            "INSERT OR REPLACE INTO resume (id, filename, file_path, parsed_data, uploaded_at) "
-            "VALUES (1, ?, ?, ?, ?)",
-            (filename, str(file_path), json.dumps(parsed, ensure_ascii=False), now),
+        # Get uploaded_at
+        resume_data = await resume_model.get_resume(db)
+        uploaded_at = resume_data["uploaded_at"] if resume_data else ""
+
+        return ResumeUploadOut(
+            filename=filename,
+            parsed=ParsedResume(**{k: parsed.get(k) for k in ParsedResume.model_fields}),
+            uploaded_at=uploaded_at,
+            cleared=ClearResult(
+                reports_deleted=reports_deleted,
+                messages_deleted=messages_deleted,
+            ),
         )
 
-        return {
-            "filename": filename,
-            "parsed": {
-                "skills": parsed.get("skills", []),
-                "experience_years": parsed.get("experience_years"),
-                "education": parsed.get("education"),
-                "raw_text": raw_text,
-            },
-            "uploaded_at": now,
-            "cleared": {
-                "reports_deleted": reports_deleted,
-                "messages_deleted": messages_deleted,
-            },
-        }
-
-    async def get(self) -> dict | None:
-        """Get current resume info."""
-        row = await self._db.fetch_one("SELECT * FROM resume WHERE id = 1")
-        if row is None:
+    async def get(self, db: aiosqlite.Connection) -> ResumeOut | None:
+        data = await resume_model.get_resume(db)
+        if not data:
             return None
+        parsed = data["parsed_data"]
+        return ResumeOut(
+            filename=data["filename"],
+            parsed=ParsedResume(**{k: parsed.get(k) for k in ParsedResume.model_fields}),
+            uploaded_at=data["uploaded_at"],
+        )
 
-        parsed = json.loads(row["parsed_data"])
-        return {
-            "filename": row["filename"],
-            "parsed": {
-                "skills": parsed.get("skills", []),
-                "experience_years": parsed.get("experience_years"),
-                "education": parsed.get("education"),
-                "raw_text": parsed.get("raw_text", ""),
-            },
-            "uploaded_at": row["uploaded_at"],
-        }
+    async def delete(self, db: aiosqlite.Connection) -> ClearResult:
+        resume_data = await resume_model.get_resume(db)
+        if not resume_data:
+            raise ResumeNotFoundError()
 
-    async def delete(self) -> dict:
-        """Delete resume file and DB record, cascade clear reports."""
-        row = await self._db.fetch_one("SELECT file_path FROM resume WHERE id = 1")
+        # Delete file
+        file_path = Path(resume_data["file_path"])
+        if file_path.exists():
+            file_path.unlink()
 
-        reports_count = await self._db.fetch_one("SELECT COUNT(*) as cnt FROM reports")
-        messages_count = await self._db.fetch_one("SELECT COUNT(*) as cnt FROM chat_messages")
-        reports_deleted = reports_count["cnt"] if reports_count else 0
-        messages_deleted = messages_count["cnt"] if messages_count else 0
+        # Cascade clear
+        reports_deleted, messages_deleted = await report_model.delete_all_reports(db)
+        await resume_model.delete_resume(db)
 
-        await self._db.execute("DELETE FROM reports")
-        await self._db.execute("DELETE FROM resume WHERE id = 1")
-
-        # Remove file from disk
-        if row and row["file_path"]:
-            path = Path(row["file_path"])
-            if path.exists():
-                path.unlink()
-
-        return {
-            "cleared": {
-                "reports_deleted": reports_deleted,
-                "messages_deleted": messages_deleted,
-            }
-        }
+        return ClearResult(
+            reports_deleted=reports_deleted,
+            messages_deleted=messages_deleted,
+        )

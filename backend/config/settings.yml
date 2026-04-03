@@ -14,10 +14,10 @@ uploads:
     - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 llm:
-  base_url: "${LLM_BASE_URL:-https://api.deepseek.com}"
   api_key: "${LLM_API_KEY}"
-  model: "deepseek-chat"                                         # 解析类任务用的模型
-  model_report: "deepseek-reasoner"                                  # 报告/对话用的模型
+  base_url: "${LLM_BASE_URL}"
+  model: "deepseek-chat"
+  model_report: "deepseek-reasoner"
   max_tokens_report: 4096
   max_tokens_chat: 2048
   temperature: 0.7
@@ -27,5 +27,3 @@ crawl:
   page_load_timeout: 30000
   max_scroll_attempts: 20
   concurrent_companies: 2
-  agent_learning_pages: 1             # Agent 只分析第一页
-  agent_lock_threshold: 1             # 分析 1 次即锁定

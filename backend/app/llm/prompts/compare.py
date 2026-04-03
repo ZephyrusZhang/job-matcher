@@ -1,8 +1,4 @@
-"""Prompt template for job comparison report generation."""
-
-import json
-
-_SYSTEM_PROMPT = """你是一位资深技术招聘顾问，正在帮助求职者对比意向岗位，做出最终选择。
+SYSTEM_PROMPT = """你是一位资深技术招聘顾问，正在帮助求职者对比意向岗位，做出最终选择。
 
 上下文信息：
 - 用户简历：{parsed_resume}（包含技能、经验、教育背景）
@@ -45,17 +41,13 @@ _SYSTEM_PROMPT = """你是一位资深技术招聘顾问，正在帮助求职者
 ..."""
 
 
-def build_compare_messages(
-    parsed_resume: dict,
-    preferences: dict,
-    favorited_jobs: list[dict],
-) -> list[dict]:
-    system_content = _SYSTEM_PROMPT.format(
-        parsed_resume=json.dumps(parsed_resume, ensure_ascii=False),
-        preferences=json.dumps(preferences, ensure_ascii=False),
-        favorited_jobs=json.dumps(favorited_jobs, ensure_ascii=False),
+def build_messages(parsed_resume: str, preferences: str, favorited_jobs: str) -> list[dict]:
+    system = SYSTEM_PROMPT.format(
+        parsed_resume=parsed_resume,
+        preferences=preferences,
+        favorited_jobs=favorited_jobs,
     )
     return [
-        {"role": "system", "content": system_content},
-        {"role": "user", "content": "请根据以上信息生成对比分析报告。"},
+        {"role": "system", "content": system},
+        {"role": "user", "content": "请根据以上信息生成对比报告。"},
     ]

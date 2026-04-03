@@ -1,13 +1,9 @@
-"""SQLite database connection management and initialization."""
-
 import aiosqlite
+from pathlib import Path
 
 from app.config import DatabaseConfig
 
-_SCHEMA_SQL = """
-PRAGMA journal_mode=WAL;
-PRAGMA foreign_keys=ON;
-
+_CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS jobs (
     id                 TEXT PRIMARY KEY,
     company_id         TEXT NOT NULL,
@@ -16,7 +12,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     location           TEXT,
     job_type           TEXT,
     responsibilities   TEXT,
-    requirements      TEXT,
+    requirements_must  TEXT,
+    requirements_nice  TEXT,
     department         TEXT,
     department_product TEXT,
     education          TEXT,
@@ -92,43 +89,23 @@ CREATE TABLE IF NOT EXISTS settings (
     language        TEXT NOT NULL DEFAULT 'zh'
 );
 
-INSERT OR IGNORE INTO settings (id) VALUES (1);
+INSERT OR IGNORE INTO settings (id, display_density, language) VALUES (1, 'comfortable', 'zh');
 """
 
 
-class Database:
-    def __init__(self, config: DatabaseConfig):
-        self._path = config.path
-        self._conn: aiosqlite.Connection | None = None
+async def init_database(config: DatabaseConfig) -> None:
+    """Create tables if they don't exist."""
+    db_path = Path(config.path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(db_path)) as db:
+        await db.execute("PRAGMA foreign_keys = ON")
+        await db.executescript(_CREATE_TABLES_SQL)
+        await db.commit()
 
-    async def init(self):
-        self._conn = await aiosqlite.connect(self._path)
-        self._conn.row_factory = aiosqlite.Row
-        await self._conn.executescript(_SCHEMA_SQL)
-        await self._conn.commit()
 
-    async def close(self):
-        if self._conn:
-            await self._conn.close()
-            self._conn = None
-
-    async def execute(self, sql: str, params: tuple = ()) -> aiosqlite.Cursor:
-        cursor = await self._conn.execute(sql, params)
-        await self._conn.commit()
-        return cursor
-
-    async def fetch_one(self, sql: str, params: tuple = ()) -> dict | None:
-        cursor = await self._conn.execute(sql, params)
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-        return dict(row)
-
-    async def fetch_all(self, sql: str, params: tuple = ()) -> list[dict]:
-        cursor = await self._conn.execute(sql, params)
-        rows = await cursor.fetchall()
-        return [dict(r) for r in rows]
-
-    async def execute_many(self, sql: str, params_list: list[tuple]):
-        await self._conn.executemany(sql, params_list)
-        await self._conn.commit()
+async def get_db(db_path: str) -> aiosqlite.Connection:
+    """Get a database connection with foreign keys enabled."""
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    await db.execute("PRAGMA foreign_keys = ON")
+    return db

@@ -1,50 +1,35 @@
-"""File text extraction for PDF and DOCX."""
-
 from pathlib import Path
 
-import pdfplumber
-from docx import Document
-
-from app.exceptions import FileFormatError, FileTooLargeError
+from app.exceptions import FileFormatError
 
 
 class FileParser:
     @staticmethod
-    def extract_text(file_path: str, filename: str) -> str:
-        """Extract plain text from PDF or DOCX file."""
+    async def extract_text(file_path: str, filename: str) -> str:
+        """Extract text from PDF or DOCX files."""
         ext = Path(filename).suffix.lower()
         if ext == ".pdf":
-            return FileParser._extract_pdf(file_path)
+            return _extract_pdf(file_path)
         elif ext == ".docx":
-            return FileParser._extract_docx(file_path)
+            return _extract_docx(file_path)
         else:
             raise FileFormatError()
 
-    @staticmethod
-    def _extract_pdf(file_path: str) -> str:
-        with pdfplumber.open(file_path) as pdf:
-            texts = []
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    texts.append(text)
-            return "\n".join(texts)
 
-    @staticmethod
-    def _extract_docx(file_path: str) -> str:
-        doc = Document(file_path)
-        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+def _extract_pdf(file_path: str) -> str:
+    import pdfplumber
+
+    text_parts = []
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                text_parts.append(text)
+    return "\n".join(text_parts)
 
 
-def validate_upload(
-    filename: str,
-    content_type: str,
-    size: int,
-    max_size_mb: int,
-    allowed_types: list[str],
-) -> None:
-    """Validate uploaded file size and type."""
-    if size > max_size_mb * 1024 * 1024:
-        raise FileTooLargeError()
-    if content_type not in allowed_types:
-        raise FileFormatError()
+def _extract_docx(file_path: str) -> str:
+    from docx import Document
+
+    doc = Document(file_path)
+    return "\n".join(para.text for para in doc.paragraphs if para.text.strip())

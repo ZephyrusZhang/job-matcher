@@ -1,72 +1,67 @@
-"""OpenAI API client wrapper with streaming and retry support."""
-
-import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
 
-from openai import APITimeoutError, AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI
 
 from app.config import LLMConfig
 
 logger = logging.getLogger(__name__)
 
-_RETRYABLE_ERRORS = (APITimeoutError, RateLimitError)
-
 
 class LLMClient:
-    def __init__(self, config: LLMConfig, openai_client: AsyncOpenAI | None = None):
-        self._client = openai_client or AsyncOpenAI(
-            base_url=config.base_url,
-            api_key=config.api_key,
+    """Wraps OpenAI API for structured parsing and streaming generation."""
+
+    def __init__(self, config: LLMConfig):
+        self._config = config
+        self._client: AsyncOpenAI | None = None
+        self.model = config.model
+        self.model_report = config.model_report
+        self.config = config
+
+    @property
+    def client(self) -> AsyncOpenAI:
+        """Lazy initialization to avoid startup failures when API key is missing."""
+        if self._client is None:
+            kwargs: dict = {"api_key": self._config.api_key or "dummy"}
+            if self._config.base_url:
+                kwargs["base_url"] = self._config.base_url
+            self._client = AsyncOpenAI(**kwargs)
+        return self._client
+
+    async def structured_parse(self, messages: list[dict], schema: dict | None = None) -> dict:
+        """Non-streaming call returning structured JSON."""
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.3,
         )
-        self._model = config.model
-        self._model_report = config.model_report
-        self._max_tokens_report = config.max_tokens_report
-        self._max_tokens_chat = config.max_tokens_chat
-        self._temperature = config.temperature
+        content = response.choices[0].message.content
+        return json.loads(content)
 
-    async def structured_parse(
-        self,
-        messages: list[dict],
-        max_retries: int = 3,
-    ) -> dict:
-        """Non-streaming call that returns structured JSON.
-
-        Used for: job parsing, resume parsing.
-        """
-        for attempt in range(max_retries):
-            try:
-                response = await self._client.chat.completions.create(
-                    model=self._model,
-                    messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=0.3,
-                )
-                return json.loads(response.choices[0].message.content)
-            except _RETRYABLE_ERRORS:
-                if attempt == max_retries - 1:
-                    raise
-                wait = 2**attempt
-                logger.warning("LLM API error, retrying in %ds (attempt %d/%d)", wait, attempt + 1, max_retries)
-                await asyncio.sleep(wait)
-
-    async def stream_generate(
-        self,
-        messages: list[dict],
-        max_tokens: int | None = None,
-    ) -> AsyncGenerator[str, None]:
-        """Streaming call that yields text chunks.
-
-        Used for: report generation, chat follow-up.
-        """
-        stream = await self._client.chat.completions.create(
-            model=self._model_report,
+    async def stream_generate(self, messages: list[dict]) -> AsyncGenerator[str, None]:
+        """Streaming call yielding text chunks."""
+        stream = await self.client.chat.completions.create(
+            model=self.model_report,
             messages=messages,
             stream=True,
-            temperature=self._temperature,
-            max_tokens=max_tokens or self._max_tokens_report,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens_report,
         )
         async for chunk in stream:
-            if chunk.choices[0].delta.content:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+    async def stream_chat(self, messages: list[dict]) -> AsyncGenerator[str, None]:
+        """Streaming call for chat responses."""
+        stream = await self.client.chat.completions.create(
+            model=self.model_report,
+            messages=messages,
+            stream=True,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens_chat,
+        )
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
