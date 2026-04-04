@@ -64,7 +64,7 @@ export function JobDetailPanel({
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="right"
-        className="w-[45vw] min-w-[500px] max-w-[800px] bg-neutral-950 border-l border-neutral-800 p-0 flex flex-col"
+        className="w-full sm:w-[85vw] md:w-[45vw] md:min-w-[500px] max-w-[800px] bg-neutral-950 border-l border-neutral-800 p-0 flex flex-col"
       >
         {isLoading ? (
           <div className="p-6 space-y-4">

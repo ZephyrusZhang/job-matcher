@@ -374,7 +374,7 @@ export function AnalysisPageLayout({
         </div>
       ) : (
         /* ===== CHAT VIEW (Report + Conversation) ===== */
-        <div className="flex flex-col h-[calc(100vh-48px)]">
+        <div className="flex flex-col h-[calc(100vh-80px)] md:h-[calc(100vh-48px)]">
           {/* Header bar */}
           <div className="flex items-center justify-between py-4 shrink-0">
             <div>

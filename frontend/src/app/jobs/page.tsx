@@ -295,8 +295,8 @@ function JobsPageContent() {
           </div>
         )}
 
-        {/* Filters + Sort in one row */}
-        <div className="flex items-start justify-between gap-4">
+        {/* Filters + Sort */}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
           <div className="flex-1 min-w-0">
             {!searchQuery && (
               <FilterBar

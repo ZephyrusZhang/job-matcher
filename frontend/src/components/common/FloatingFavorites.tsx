@@ -146,8 +146,8 @@ export function FloatingFavorites() {
           />
 
           <div
-            className="fixed z-50 w-[380px] max-h-[70vh] bg-neutral-950 border border-neutral-800 rounded-lg shadow-xl flex flex-col overflow-hidden"
-            style={{ right: pos.x, bottom: pos.y + 52 }}
+            className="fixed z-50 w-[calc(100vw-32px)] sm:w-[380px] max-h-[70vh] bg-neutral-950 border border-neutral-800 rounded-lg shadow-xl flex flex-col overflow-hidden"
+            style={{ right: Math.min(pos.x, 16), bottom: pos.y + 52 }}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 shrink-0">
               <h3 className="text-sm font-medium text-white flex items-center gap-2">
