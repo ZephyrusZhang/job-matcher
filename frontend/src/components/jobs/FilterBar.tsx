@@ -77,11 +77,11 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3">
         {/* Company Selector (inline) */}
         {companies && onCompanyChange && (
           <Select value={selectedCompanyId ?? null} onValueChange={(val) => { if (val) onCompanyChange(val) }}>
-            <SelectTrigger className="w-[200px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
+            <SelectTrigger className="w-full sm:w-[200px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
               <SelectValue placeholder="选择公司">
                 {selectedCompany ? `${selectedCompany.name}（${selectedCompany.job_count}）` : "选择公司"}
               </SelectValue>
@@ -105,7 +105,7 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
             }
           }}
         >
-          <SelectTrigger className="w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
+          <SelectTrigger className="w-full sm:w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="岗位方向">岗位方向</SelectValue>
           </SelectTrigger>
           <SelectContent className="bg-neutral-950 border-neutral-800 p-1.5 min-w-[160px]">
@@ -126,7 +126,7 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
 
         {/* Location */}
         <Select value={filters.location ?? ""} onValueChange={(val) => onChange({ ...filters, location: val ?? null })}>
-          <SelectTrigger className="w-[120px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
+          <SelectTrigger className="w-full sm:w-[120px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="地点">{filters.location ?? "地点"}</SelectValue>
           </SelectTrigger>
           <SelectContent className="bg-neutral-900 border-neutral-800">
@@ -138,7 +138,7 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
 
         {/* Job Type */}
         <Select value={filters.jobType ?? ""} onValueChange={(val) => onChange({ ...filters, jobType: val ?? null })}>
-          <SelectTrigger className="w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
+          <SelectTrigger className="w-full sm:w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="岗位类型">
               {filters.jobType ? (
                 <span className="flex items-center gap-2">
@@ -162,7 +162,7 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
 
         {/* Posted Within */}
         <Select value={filters.postedWithin ?? ""} onValueChange={(val) => onChange({ ...filters, postedWithin: val ?? null })}>
-          <SelectTrigger className="w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
+          <SelectTrigger className="w-full sm:w-[130px] bg-neutral-900 border-neutral-800 text-white text-sm rounded-lg h-9">
             <SelectValue placeholder="发布时间">{postedLabel ?? "发布时间"}</SelectValue>
           </SelectTrigger>
           <SelectContent className="bg-neutral-900 border-neutral-800">

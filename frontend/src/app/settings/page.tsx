@@ -255,7 +255,7 @@ export default function SettingsPage() {
         <h1 className="text-xl font-medium text-text-primary">设置</h1>
 
         {/* Display Preferences */}
-        <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6">
+        <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-4 sm:p-6">
           <h2 className="text-base font-medium text-text-primary">显示偏好</h2>
           <Separator className="bg-neutral-800 my-4" />
 
@@ -307,11 +307,11 @@ export default function SettingsPage() {
         </div>
 
         {/* Company Management */}
-        <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-6">
-          <div className="flex items-center justify-between">
-            <div>
+        <div className="bg-neutral-950 rounded-lg border border-neutral-800 p-4 sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="text-base font-medium text-text-primary">目标公司</h2>
-              <p className="text-sm text-text-secondary mt-1">管理需要爬取岗位的目标公司</p>
+              <p className="text-sm text-text-secondary mt-1 hidden sm:block">管理需要爬取岗位的目标公司</p>
             </div>
             {!isAdding && (
               <Button
@@ -329,8 +329,8 @@ export default function SettingsPage() {
 
           {/* Add Company Form */}
           {isAdding && (
-            <div className="mb-4 rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 space-y-3">
-              <div className="grid grid-cols-[1fr_1fr_2fr_auto] gap-3 items-end">
+            <div className="mb-4 rounded-lg border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4 space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_2fr_auto] gap-3 items-end">
                 <div className="space-y-1.5">
                   <label className="text-xs text-text-secondary">公司 ID</label>
                   <Input
@@ -394,172 +394,118 @@ export default function SettingsPage() {
             </div>
           )}
 
-          <Table>
-            <TableHeader>
-              <TableRow className="border-b border-neutral-800 hover:bg-transparent">
-                <TableHead className="text-text-secondary text-xs uppercase">公司名称</TableHead>
-                <TableHead className="text-text-secondary text-xs uppercase">招聘页 URL</TableHead>
-                <TableHead className="text-text-secondary text-xs uppercase">采集频率</TableHead>
-                <TableHead className="text-text-secondary text-xs uppercase">岗位数</TableHead>
-                <TableHead className="text-text-secondary text-xs uppercase">上次采集</TableHead>
-                <TableHead className="text-text-secondary text-xs uppercase">状态</TableHead>
-                <TableHead className="text-text-secondary text-xs uppercase text-right">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {companies.length === 0 && (
-                <TableRow className="border-b border-neutral-800 hover:bg-transparent">
-                  <TableCell colSpan={7} className="text-center text-sm text-text-muted py-8">
-                    暂无目标公司，请点击上方「添加公司」
-                  </TableCell>
-                </TableRow>
-              )}
-              {companies.map((company) => (
-                <TableRow key={company.id} className="border-b border-neutral-800 hover:bg-neutral-900/50">
-                  {editingId === company.id ? (
-                    <>
-                      <TableCell>
-                        <Input
-                          value={editingData?.name ?? ""}
-                          onChange={(e) =>
-                            setEditingData((d) => d ? { ...d, name: e.target.value } : d)
-                          }
-                          className="bg-neutral-900 border-neutral-700 text-white text-sm h-7 w-full"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={editingData?.career_url ?? ""}
-                          onChange={(e) =>
-                            setEditingData((d) => d ? { ...d, career_url: e.target.value } : d)
-                          }
-                          className="bg-neutral-900 border-neutral-700 text-white text-sm h-7 w-full"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={editingData?.crawl_interval_hours ?? 12}
-                          onChange={(e) =>
-                            setEditingData((d) =>
-                              d ? { ...d, crawl_interval_hours: parseInt(e.target.value) || 12 } : d
-                            )
-                          }
-                          className="bg-neutral-900 border-neutral-700 text-white text-sm h-7 w-20"
-                        />
-                      </TableCell>
-                      <TableCell className="text-sm text-text-primary">{company.job_count}</TableCell>
-                      <TableCell className="text-sm text-text-secondary">
-                        {formatRelativeTime(company.last_crawled_at)}
-                      </TableCell>
-                      <TableCell>
-                        <CrawlStatusBadge status={company.crawl_status} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex gap-1 justify-end">
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={handleUpdateCompany}
-                            className="text-green-400 hover:text-green-300 hover:bg-green-500/10"
-                          >
-                            <Check className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => {
-                              setEditingId(null)
-                              setEditingData(null)
-                            }}
-                            className="text-text-secondary hover:text-text-primary"
-                          >
-                            <X className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </>
+          {/* Mobile: card layout */}
+          <div className="md:hidden space-y-3">
+            {companies.length === 0 && (
+              <p className="text-center text-sm text-text-muted py-8">暂无目标公司，请点击上方「添加公司」</p>
+            )}
+            {companies.map((company) => (
+              <div key={company.id} className="border border-neutral-800 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm text-text-primary font-medium truncate">{company.name}</p>
+                    <p className="text-xs text-text-muted truncate">{company.career_url}</p>
+                  </div>
+                  <CrawlStatusBadge status={company.crawl_status} />
+                </div>
+                <div className="flex items-center gap-4 text-xs text-text-secondary">
+                  <span>每 <span className="text-blue-400">{company.crawl_interval_hours}</span>h</span>
+                  <span>{company.job_count} 岗位</span>
+                  <span>{formatRelativeTime(company.last_crawled_at)}</span>
+                </div>
+                <div className="flex gap-1 pt-1">
+                  {isCrawlActive(company) ? (
+                    <Button variant="ghost" size="icon-xs" onClick={() => handleCancelCrawl(company.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10" title="停止"><Square className="size-3 fill-current" /></Button>
                   ) : (
-                    <>
-                      <TableCell className="text-sm text-text-primary font-medium">
-                        {company.name}
-                        <span className="text-text-muted text-xs ml-2">({company.id})</span>
-                      </TableCell>
-                      <TableCell className="text-sm text-text-secondary max-w-[200px] truncate">
-                        <a
-                          href={company.career_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:text-blue-400 transition-colors"
-                        >
-                          {company.career_url}
-                        </a>
-                      </TableCell>
-                      <TableCell className="text-sm text-text-primary">
-                        每 <span className="text-blue-400">{company.crawl_interval_hours}</span> 小时
-                      </TableCell>
-                      <TableCell className="text-sm text-text-primary">{company.job_count}</TableCell>
-                      <TableCell className="text-sm text-text-secondary">
-                        {formatRelativeTime(company.last_crawled_at)}
-                      </TableCell>
-                      <TableCell>
-                        <CrawlStatusBadge status={company.crawl_status} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex gap-1 justify-end">
-                          {isCrawlActive(company) ? (
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => handleCancelCrawl(company.id)}
-                              className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                              title="停止爬取"
-                            >
-                              <Square className="size-3 fill-current" />
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => handleTriggerCrawl(company.id)}
-                              disabled={triggeringIds.has(company.id)}
-                              className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 disabled:opacity-30"
-                              title="手动触发爬取"
-                            >
-                              {triggeringIds.has(company.id) ? (
-                                <Loader2 className="size-3.5 animate-spin" />
-                              ) : (
-                                <Play className="size-3.5" />
-                              )}
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => startEditing(company)}
-                            className="text-text-secondary hover:text-text-primary hover:bg-neutral-800"
-                            title="编辑"
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => handleDeleteCompany(company.id, company.name)}
-                            className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10"
-                            title="删除"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </>
+                    <Button variant="ghost" size="icon-xs" onClick={() => handleTriggerCrawl(company.id)} disabled={triggeringIds.has(company.id)} className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 disabled:opacity-30" title="爬取">
+                      {triggeringIds.has(company.id) ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+                    </Button>
                   )}
+                  <Button variant="ghost" size="icon-xs" onClick={() => startEditing(company)} className="text-text-secondary hover:text-text-primary hover:bg-neutral-800" title="编辑"><Pencil className="size-3.5" /></Button>
+                  <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteCompany(company.id, company.name)} className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10" title="删除"><Trash2 className="size-3.5" /></Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: table layout */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-neutral-800 hover:bg-transparent">
+                  <TableHead className="text-text-secondary text-xs uppercase">公司名称</TableHead>
+                  <TableHead className="text-text-secondary text-xs uppercase">招聘页 URL</TableHead>
+                  <TableHead className="text-text-secondary text-xs uppercase">采集频率</TableHead>
+                  <TableHead className="text-text-secondary text-xs uppercase">岗位数</TableHead>
+                  <TableHead className="text-text-secondary text-xs uppercase">上次采集</TableHead>
+                  <TableHead className="text-text-secondary text-xs uppercase">状态</TableHead>
+                  <TableHead className="text-text-secondary text-xs uppercase text-right">操作</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {companies.length === 0 && (
+                  <TableRow className="border-b border-neutral-800 hover:bg-transparent">
+                    <TableCell colSpan={7} className="text-center text-sm text-text-muted py-8">
+                      暂无目标公司，请点击上方「添加公司」
+                    </TableCell>
+                  </TableRow>
+                )}
+                {companies.map((company) => (
+                  <TableRow key={company.id} className="border-b border-neutral-800 hover:bg-neutral-900/50">
+                    {editingId === company.id ? (
+                      <>
+                        <TableCell>
+                          <Input value={editingData?.name ?? ""} onChange={(e) => setEditingData((d) => d ? { ...d, name: e.target.value } : d)} className="bg-neutral-900 border-neutral-700 text-white text-sm h-7 w-full" />
+                        </TableCell>
+                        <TableCell>
+                          <Input value={editingData?.career_url ?? ""} onChange={(e) => setEditingData((d) => d ? { ...d, career_url: e.target.value } : d)} className="bg-neutral-900 border-neutral-700 text-white text-sm h-7 w-full" />
+                        </TableCell>
+                        <TableCell>
+                          <Input type="number" min={1} value={editingData?.crawl_interval_hours ?? 12} onChange={(e) => setEditingData((d) => d ? { ...d, crawl_interval_hours: parseInt(e.target.value) || 12 } : d)} className="bg-neutral-900 border-neutral-700 text-white text-sm h-7 w-20" />
+                        </TableCell>
+                        <TableCell className="text-sm text-text-primary">{company.job_count}</TableCell>
+                        <TableCell className="text-sm text-text-secondary">{formatRelativeTime(company.last_crawled_at)}</TableCell>
+                        <TableCell><CrawlStatusBadge status={company.crawl_status} /></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-1 justify-end">
+                            <Button variant="ghost" size="icon-xs" onClick={handleUpdateCompany} className="text-green-400 hover:text-green-300 hover:bg-green-500/10"><Check className="size-3.5" /></Button>
+                            <Button variant="ghost" size="icon-xs" onClick={() => { setEditingId(null); setEditingData(null) }} className="text-text-secondary hover:text-text-primary"><X className="size-3.5" /></Button>
+                          </div>
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-sm text-text-primary font-medium">
+                          {company.name}
+                          <span className="text-text-muted text-xs ml-2">({company.id})</span>
+                        </TableCell>
+                        <TableCell className="text-sm text-text-secondary max-w-[200px] truncate">
+                          <a href={company.career_url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-400 transition-colors">{company.career_url}</a>
+                        </TableCell>
+                        <TableCell className="text-sm text-text-primary">每 <span className="text-blue-400">{company.crawl_interval_hours}</span> 小时</TableCell>
+                        <TableCell className="text-sm text-text-primary">{company.job_count}</TableCell>
+                        <TableCell className="text-sm text-text-secondary">{formatRelativeTime(company.last_crawled_at)}</TableCell>
+                        <TableCell><CrawlStatusBadge status={company.crawl_status} /></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-1 justify-end">
+                            {isCrawlActive(company) ? (
+                              <Button variant="ghost" size="icon-xs" onClick={() => handleCancelCrawl(company.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10" title="停止爬取"><Square className="size-3 fill-current" /></Button>
+                            ) : (
+                              <Button variant="ghost" size="icon-xs" onClick={() => handleTriggerCrawl(company.id)} disabled={triggeringIds.has(company.id)} className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 disabled:opacity-30" title="手动触发爬取">
+                                {triggeringIds.has(company.id) ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon-xs" onClick={() => startEditing(company)} className="text-text-secondary hover:text-text-primary hover:bg-neutral-800" title="编辑"><Pencil className="size-3.5" /></Button>
+                            <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteCompany(company.id, company.name)} className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10" title="删除"><Trash2 className="size-3.5" /></Button>
+                          </div>
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </div>
     </PageContainer>
