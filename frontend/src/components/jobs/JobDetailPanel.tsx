@@ -218,9 +218,9 @@ export function JobDetailPanel({
         side={isMobile ? "bottom" : "right"}
         showCloseButton={!isMobile}
         className={cn(
-          "bg-neutral-950 p-0 flex flex-col",
+          "bg-neutral-950 p-0 flex flex-col overflow-hidden",
           isMobile
-            ? "h-[92vh] rounded-t-2xl border-t border-neutral-800"
+            ? "h-[64vh] rounded-t-2xl border-t border-neutral-800"
             : "w-[85vw] md:w-[45vw] md:min-w-[500px] max-w-[800px] border-l border-neutral-800"
         )}
       >
