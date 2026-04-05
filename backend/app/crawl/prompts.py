@@ -49,19 +49,6 @@ SYSTEM_PROMPT_STATIC = """\
    - 如果没有详情接口的流量 → 回到第一步，browser_action 点击一个岗位详情
    - 场景 C 在第四步执行爬虫失败后才能确认
 
-## 第 2.5 步：检查 category 字段是否为代码
-
-这一步非常重要。很多招聘网站的 API 返回的岗位类别字段（如 category、job_category、position_type 等）不是可读文本，而是内部代码（如 "j1007"、"10001"、"R123"）。你必须在生成爬虫代码前解决这个问题。
-
-判断方法：查看 inspect_request 返回的列表数据中，类别字段的值是否为人类可读的中文/英文文本（如 "后端开发"、"算法"）。如果是代码：
-
-1. 用 search_traffic 搜索该代码值（如搜索 "j1007"）或搜索通用关键词（如 "category"、"dict"、"type"、"channel"），查找是否有字典/枚举映射接口
-2. 如果找到映射接口，用 inspect_request 查看完整内容，提取代码→文本的映射表
-3. 在爬虫代码中硬编码这个映射表（dict），用于将代码转换为可读文本
-4. 如果实在找不到映射接口，就在爬虫代码中发一个请求去获取这个映射（通常网站首页或筛选器会加载这类数据）
-
-原则：输出 JSON 的 category 字段必须是人类可读的岗位类别文本，绝对不能是代码。
-
 ## 第三步：生成代码
 
 用 sandbox_write_file 写入 /home/user/crawler.py。
@@ -75,7 +62,7 @@ SYSTEM_PROMPT_STATIC = """\
 - 如果是场景 B，实现列表遍历 + 逐条请求详情
 - 频率控制（random.uniform(1, 3) 秒延迟）
 - 错误处理（请求失败重试 2 次，仍失败则跳过）
-- 数据保存到 /home/user/output.json（JSON 数组）
+- 数据保存到 /home/user/output.json（JSON 对象，格式为 {"jobs": [...]}）
 - 进度信息输出到 stderr（用 print(..., file=sys.stderr)）
 
 重要：始终只操作 /home/user/crawler.py 这一个文件。修复 bug 时直接用 sandbox_write_file 覆盖这个文件，不要创建其他文件。
@@ -88,9 +75,8 @@ SYSTEM_PROMPT_STATIC = """\
 4. 检验数据完整性：
    - title、location 是否非空？
    - requirements、responsibilities 是否非空？
-   - category 是否为人类可读文本（而非代码）？
+   - category 字段是否存在？（无需转换，保留 API 原始值即可）
    - 如果 title/requirements 为空 → 说明是场景 B，需要补充详情爬取逻辑
-   - 如果 category 是代码 → 回到第 2.5 步处理映射
 5. 全部通过 → 进入第五步
 
 ## 第五步：全量爬取
@@ -166,27 +152,31 @@ asyncio.run(main())
 
 # 输出数据格式
 
-爬虫输出的每条岗位数据必须严格遵循以下 JSON 格式：
+爬虫输出必须保存为 JSON 对象（不是数组），格式如下：
 
 {
-    "company": "公司名称",
-    "id": "岗位ID（字符串）",
-    "title": "岗位名称",
-    "category": "岗位类别",
-    "location": "工作地点",
-    "requirements": "任职要求（完整文本）",
-    "responsibilities": "岗位职责（完整文本）",
-    "salary": "薪资范围（如无则填'未公开'）",
-    "post_date": "发布日期（YYYY-MM-DD 格式）",
-    "source_url": "岗位详情页的原始链接",
-    "raw": {}
+    "jobs": [
+        {
+            "company": "公司名称",
+            "id": "岗位ID（字符串）",
+            "title": "岗位名称",
+            "category": "岗位类别（保留 API 返回的原始值，无需转换）",
+            "location": "工作地点",
+            "requirements": "任职要求（完整文本）",
+            "responsibilities": "岗位职责（完整文本）",
+            "salary": "薪资范围（如无则填'未公开'）",
+            "post_date": "发布日期（YYYY-MM-DD 格式）",
+            "source_url": "岗位详情页的原始链接",
+            "raw": {}
+        }
+    ]
 }
 
 字段规则：
 - 所有字段必须存在，不能缺失
 - 无法获取的字段填空字符串 ""，不要填 null 或省略
 - company 字段根据目标网站固定填写
-- category 字段必须是人类可读的岗位类别文本（如 "后端开发"、"算法工程师"），绝对不能是内部代码（如 "j1007"、"10001"）。如果 API 返回的是代码，必须在爬虫中完成代码→文本的转换
+- category 字段保留 API 返回的原始值（可以是代码、文本、ID 等任何值），不需要做任何转换或映射，后续由系统自动归一化
 - source_url 应拼接为完整的可访问 URL
 - raw 保存 API 返回的原始数据，便于后续二次处理\
 """
