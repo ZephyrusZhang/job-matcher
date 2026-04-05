@@ -1,0 +1,13 @@
+__pycache__
+*.pyc
+.venv
+.env
+.pytest_cache
+.coverage
+data/job_matcher.db
+data/uploads/*
+data/category_cache.json
+logs/
+tmp/
+tests/
+.git
