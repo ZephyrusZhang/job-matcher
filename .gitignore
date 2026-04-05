@@ -9,3 +9,4 @@
 backend/data/uploads/
 **/tmp/
 **/logs/
+**/generated/
