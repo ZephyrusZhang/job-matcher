@@ -45,6 +45,10 @@ class CrawlService:
         # Check for cached crawler script
         script_row = await script_model.get_script(db, company_id)
         cached_code = script_row["code"] if script_row else None
+        logger.info(
+            f"Trigger crawl: company={company_id}, "
+            f"cached_code={'yes (' + str(len(cached_code)) + ' chars)' if cached_code else 'no'}"
+        )
 
         task_id = str(uuid.uuid4())
         await task_model.create_task(db, task_id, company_id)
@@ -122,22 +126,23 @@ class CrawlService:
             raw_jobs: list[dict] = []
             new_code: str | None = None
 
+            cache_hit = False
+
             if cached_code:
                 # Try cached code first
-                logger.info(f"Running cached crawler for company={company_id}")
+                logger.info(f"[crawl] Using cached code for company={company_id} ({len(cached_code)} chars)")
                 try:
                     raw_jobs = await loop.run_in_executor(
                         None, run_cached_crawler, cached_code, cancel_event
                     )
-                    logger.info(f"Cached crawler succeeded: {len(raw_jobs)} jobs")
+                    cache_hit = True
+                    logger.info(f"[crawl] Cached crawler succeeded: {len(raw_jobs)} jobs")
                 except Exception as e:
-                    logger.warning(
-                        f"Cached crawler failed for company={company_id}: {e}. "
-                        "Falling back to agent."
-                    )
-                    raw_jobs = []
+                    logger.warning(f"[crawl] Cached crawler FAILED for company={company_id}: {e}")
+            else:
+                logger.info(f"[crawl] No cached code for company={company_id}")
 
-            if not raw_jobs and not cancel_event.is_set():
+            if not cache_hit and not cancel_event.is_set():
                 # No cached code, or cached code failed → run full agent
                 logger.info(f"Running agent crawler for company={company_id}")
                 raw_jobs, new_code = await loop.run_in_executor(
