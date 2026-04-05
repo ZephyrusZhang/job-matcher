@@ -1,0 +1,49 @@
+services:
+  # --- Backend API ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist database and uploads across restarts
+      - backend-data:/app/data
+      # Mount Docker socket so backend can create sandbox containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-crawler-sandbox}
+    restart: unless-stopped
+
+  # --- Frontend ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # At build time, tell Next.js where the API is.
+        # In browser, requests go to the host-exposed backend port.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # --- Crawler Sandbox (pre-built image, not a running service) ---
+  # This service only builds the sandbox image.
+  # The backend creates/destroys sandbox containers on-demand via Docker socket.
+  sandbox:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.sandbox
+    image: crawler-sandbox
+    # This service should not run persistently
+    profiles:
+      - build-only
+
+volumes:
+  backend-data:

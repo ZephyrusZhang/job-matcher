@@ -134,12 +134,12 @@ crawl_tasks← 爬取任务表 (状态跟踪)
 
 ### 环境要求
 
-| 工具 | 最低版本 |
-|------|----------|
-| [Node.js](https://nodejs.org/) | 18+ |
-| [Bun](https://bun.sh/) | 1.0+ |
-| [Python](https://python.org/) | 3.11+ |
-| [uv](https://docs.astral.sh/uv/) | 0.1+ |
+| 工具 | 最低版本 | 说明 |
+|------|----------|------|
+| [Docker](https://www.docker.com/) | 20+ | 部署 & 爬虫沙箱（必需） |
+| [Bun](https://bun.sh/) | 1.0+ | 前端包管理（本地开发） |
+| [Python](https://python.org/) | 3.11+ | 后端运行时（本地开发） |
+| [uv](https://docs.astral.sh/uv/) | 0.1+ | 后端包管理（本地开发） |
 
 ### 1. 克隆项目
 
@@ -212,10 +212,78 @@ bun dev
 
 ## 📦 部署指南
 
-### 后端部署
+### Docker 部署（推荐）
+
+> 后端爬虫通过 Docker Socket 创建临时沙箱容器运行爬虫代码，因此宿主机必须安装 Docker。
+
+#### 1. 准备环境变量
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 文件：
+
+```env
+# LLM API (报告生成、简历解析、爬虫 Agent)
+LLM_API_KEY=sk-xxx
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+
+# 前端访问后端的地址（浏览器端发起请求）
+# 本地部署用 http://localhost:8000
+# 远程服务器用 http://<服务器IP>:8000
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
+
+#### 2. 构建爬虫沙箱镜像
+
+```bash
+docker compose build sandbox
+```
+
+> 沙箱镜像包含 Python 3.11 + httpx + Playwright + Chromium，供爬虫 Agent 在隔离环境中执行生成的爬虫代码。
+
+#### 3. 启动服务
+
+```bash
+docker compose up -d --build
+```
+
+- 前端：http://localhost:3000
+- 后端：http://localhost:8000
+
+#### 4. 查看日志
+
+```bash
+docker compose logs -f backend   # 后端日志
+docker compose logs -f frontend  # 前端日志
+```
+
+#### 架构说明
+
+```
+┌─────────────┐     ┌─────────────┐
+│  frontend   │────▶│   backend   │
+│  :3000      │     │   :8000     │
+└─────────────┘     └──────┬──────┘
+                           │ Docker Socket
+                    ┌──────▼──────┐
+                    │  sandbox    │  (按需创建/销毁)
+                    │ containers  │
+                    └─────────────┘
+```
+
+- **backend** 挂载 `/var/run/docker.sock`，通过 Docker SDK 按需创建沙箱容器执行爬虫
+- 沙箱容器是宿主机上的 sibling 容器，运行完毕后自动清理
+- `backend-data` volume 持久化 SQLite 数据库和上传的简历文件
+
+---
+
+### 直接部署
 
 <details>
-<summary>直接部署</summary>
+<summary>后端</summary>
 
 ```bash
 cd backend
@@ -226,61 +294,37 @@ uv sync --no-dev
 # 安装浏览器
 uv run playwright install chromium --with-deps
 
+# 构建爬虫沙箱镜像（需要 Docker）
+docker build -f Dockerfile.sandbox -t crawler-sandbox .
+
 # 配置环境变量
 cp .env.example .env
-# 编辑 .env 填入生产环境的 API Key
+# 编辑 .env 填入 API Key
 
 # 启动服务
-uv run uvicorn app.main:app --host 0.0.0.0 --port 3001
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 </details>
 
 <details>
-<summary>使用 systemd 管理 (Linux)</summary>
-
-创建服务文件 `/etc/systemd/system/job-matcher-backend.service`：
-
-```ini
-[Unit]
-Description=JobMatcher Backend
-After=network.target
-
-[Service]
-Type=simple
-User=deploy
-WorkingDirectory=/opt/job-matcher/backend
-Environment=PATH=/opt/job-matcher/backend/.venv/bin:/usr/local/bin:/usr/bin
-ExecStart=/opt/job-matcher/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 3001
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl enable --now job-matcher-backend
-```
-
-</details>
-
-### 前端部署
-
-<details>
-<summary>静态构建 + Nginx</summary>
+<summary>前端</summary>
 
 ```bash
 cd frontend
 
-# 构建生产版本
-bun run build
+# 安装依赖 & 构建
+bun install
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run build
 
 # 启动生产服务
 bun start --port 3000
 ```
 
-Nginx 反向代理配置示例：
+</details>
+
+<details>
+<summary>Nginx 反向代理（可选）</summary>
 
 ```nginx
 server {
@@ -299,7 +343,7 @@ server {
 
     # 后端 API
     location /api/ {
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -315,11 +359,43 @@ server {
 
 </details>
 
+<details>
+<summary>使用 systemd 管理后端 (Linux)</summary>
+
+创建服务文件 `/etc/systemd/system/job-matcher-backend.service`：
+
+```ini
+[Unit]
+Description=JobMatcher Backend
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/opt/job-matcher/backend
+Environment=PATH=/opt/job-matcher/backend/.venv/bin:/usr/local/bin:/usr/bin
+ExecStart=/opt/job-matcher/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now job-matcher-backend
+```
+
+</details>
+
 ## 🗂️ 项目结构
 
 ```
 job-matcher/
+├── docker-compose.yml       # Docker 编排（前端 + 后端 + 沙箱构建）
+├── .env.example             # Docker 环境变量模板
 ├── frontend/                # Next.js 前端应用
+│   ├── Dockerfile           # 多阶段构建（Bun 构建 + Node 运行）
 │   ├── src/
 │   │   ├── app/             # App Router 页面 (jobs, match, compare, settings)
 │   │   ├── components/      # 业务组件 + shadcn/ui 组件
@@ -329,6 +405,8 @@ job-matcher/
 │   │   └── types/           # TypeScript 类型定义
 │   └── package.json
 ├── backend/                 # FastAPI 后端服务
+│   ├── Dockerfile           # Python 3.11 + uv + Playwright
+│   ├── Dockerfile.sandbox   # 爬虫沙箱镜像（httpx + Playwright + Chromium）
 │   ├── app/
 │   │   ├── routers/         # API 路由层
 │   │   ├── services/        # 业务逻辑层
