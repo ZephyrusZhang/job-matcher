@@ -173,14 +173,16 @@ def run_cached_crawler(
 
     Returns the list of crawled job dicts.
     """
-    from .tools import sandbox_mgr
+    from .sandbox import SandboxManager
 
     if cancel_event and cancel_event.is_set():
         return []
 
-    sandbox_mgr.ensure_sandbox()
-    sandbox_mgr.write_file("/home/user/crawler.py", code)
-    result = sandbox_mgr.run_command("python /home/user/crawler.py", timeout=300)
+    # Use a fresh sandbox to avoid stale container references
+    sandbox = SandboxManager()
+    sandbox.ensure_sandbox()
+    sandbox.write_file("/home/user/crawler.py", code)
+    result = sandbox.run_command("python /home/user/crawler.py", timeout=300)
 
     if result["exit_code"] != 0:
         stderr = result.get("stderr", "")
@@ -188,7 +190,7 @@ def run_cached_crawler(
 
     # Read output
     try:
-        content = sandbox_mgr.read_file("/home/user/output.json")
+        content = sandbox.read_file("/home/user/output.json")
         data = json.loads(content)
         if isinstance(data, dict) and "jobs" in data:
             return data["jobs"]

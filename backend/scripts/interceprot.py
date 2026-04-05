@@ -12,12 +12,23 @@ import argparse
 import json
 from pathlib import Path
 from urllib.parse import urlparse
-from playwright.async_api import async_playwright, Page, BrowserContext
-
+from playwright.async_api import async_playwright, Page
 
 # ---- 输出目录 ----
 OUTPUT_DIR = Path("./generated")
 
+# ---- 反检测 JS ----
+STEALTH_JS = """\
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+window.chrome = { runtime: {} };
+const originalQuery = window.navigator.permissions.query;
+window.navigator.permissions.query = (parameters) =>
+    parameters.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission })
+        : originalQuery(parameters);
+"""
 
 # ---- 过滤规则 ----
 
@@ -31,6 +42,9 @@ SKIP_DOMAINS = {
     "hm.baidu.com", "tongji.baidu.com",
     "arms-retcode.aliyuncs.com",
     "sentry.io", "hotjar.com",
+    "hpd.baidu.com", "nsclick.baidu.com",
+    "sp0.baidu.com", "sp1.baidu.com",
+    "hmcdn.baidu.com",
 }
 
 SKIP_PATH_KEYWORDS = [
@@ -60,7 +74,8 @@ def should_skip(url_str: str) -> bool:
 
 # ---- 请求捕获 ----
 
-def make_response_handler(captured: list, phase: str):
+def make_response_handler(captured: list, phase_ref: list):
+    """phase_ref 是 [phase] 单元素列表，方便外部切换阶段"""
     async def on_response(response):
         request = response.request
         if request.resource_type not in ("fetch", "xhr"):
@@ -69,6 +84,7 @@ def make_response_handler(captured: list, phase: str):
         if should_skip(url_str):
             return
 
+        phase = phase_ref[0]
         entry = {
             "phase": phase,
             "url": url_str,
@@ -128,26 +144,39 @@ async def find_job_card(page: Page):
 
 
 async def wait_for_enter(prompt_msg: str):
-    """异步等待用户按 Enter"""
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, lambda: input(prompt_msg))
 
 
+# ---- 主流程 ----
+
 async def run(url: str, output_path: Path, scroll: bool):
     captured = []
+    phase_ref = ["list"]
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(
+            headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ],
+        )
         context = await browser.new_context(
             viewport={"width": 1440, "height": 900},
             locale="zh-CN",
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
+                "Chrome/131.0.0.0 Safari/537.36"
             ),
         )
+        await context.add_init_script(STEALTH_JS)
         page = await context.new_page()
+
+        handler = make_response_handler(captured, phase_ref)
+        page.on("response", handler)
 
         # ========== 阶段1: 岗位列表页 ==========
         print(f"\n{'='*60}")
@@ -155,10 +184,9 @@ async def run(url: str, output_path: Path, scroll: bool):
         print(f"  URL: {url}")
         print(f"{'='*60}\n")
 
-        list_handler = make_response_handler(captured, "list")
-        page.on("response", list_handler)
-
-        await page.goto(url, wait_until="networkidle", timeout=30000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        # 等几秒让 XHR 请求发出
+        await asyncio.sleep(3)
 
         if scroll:
             print("  自动滚动触发懒加载...")
@@ -171,7 +199,7 @@ async def run(url: str, output_path: Path, scroll: bool):
         print(f"  你可以在浏览器中操作（翻页、筛选等），新请求会持续捕获")
         await wait_for_enter("\n  >>> 按 Enter 进入【阶段2: 详情页捕获】... ")
 
-        list_count = len(captured)  # 更新（用户可能在等待期间触发了更多请求）
+        list_count = len(captured)
         print(f"\n  ✓ 列表页最终捕获 {list_count} 个请求\n")
 
         # ========== 阶段2: 岗位详情页 ==========
@@ -179,9 +207,7 @@ async def run(url: str, output_path: Path, scroll: bool):
         print(f"【阶段2】点击岗位卡片，捕获详情页请求")
         print(f"{'='*60}\n")
 
-        page.remove_listener("response", list_handler)
-        detail_handler = make_response_handler(captured, "detail")
-        page.on("response", detail_handler)
+        phase_ref[0] = "detail"
 
         # 监听新标签页
         detail_page = None
@@ -189,7 +215,7 @@ async def run(url: str, output_path: Path, scroll: bool):
         async def on_new_page(new_page: Page):
             nonlocal detail_page
             detail_page = new_page
-            new_page.on("response", make_response_handler(captured, "detail"))
+            new_page.on("response", make_response_handler(captured, phase_ref))
             print(f"  检测到新标签页: {new_page.url[:100]}")
 
         context.on("page", on_new_page)
@@ -204,20 +230,19 @@ async def run(url: str, output_path: Path, scroll: bool):
             await asyncio.sleep(3)
 
             pages_after = len(context.pages)
-
             if pages_after > pages_before or detail_page:
                 print("  → 场景A: 新标签页打开")
                 if detail_page:
                     try:
-                        await detail_page.wait_for_load_state("networkidle", timeout=15000)
+                        await detail_page.wait_for_load_state("load", timeout=15000)
                     except Exception:
                         pass
                     print(f"  详情页 URL: {detail_page.url[:120]}")
             elif page.url != url_before:
-                print(f"  → 场景B: 同标签页跳转")
+                print("  → 场景B: 同标签页跳转")
                 print(f"  详情页 URL: {page.url[:120]}")
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    await page.wait_for_load_state("load", timeout=15000)
                 except Exception:
                     pass
             else:
@@ -231,12 +256,10 @@ async def run(url: str, output_path: Path, scroll: bool):
         await wait_for_enter("\n  >>> 按 Enter 结束捕获并保存... ")
 
         detail_count = len(captured) - list_count
-        print(f"\n  ✓ 详情页最终捕获 {detail_count} 个请求\n")
-
         await browser.close()
 
     # ---- 保存与摘要 ----
-    print(f"{'='*60}")
+    print(f"\n{'='*60}")
     print(f"捕获汇总: 列表页 {list_count} 个 + 详情页 {detail_count} 个 = 共 {len(captured)} 个")
     print(f"{'='*60}\n")
 
