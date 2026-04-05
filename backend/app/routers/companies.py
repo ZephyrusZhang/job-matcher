@@ -3,8 +3,10 @@ from fastapi import APIRouter, Depends
 import aiosqlite
 
 from app.dependencies import get_company_service, get_database
+from app.models import crawler_script as script_model
 from app.schemas.common import ApiResponse
 from app.schemas.company import CompanyCreate, CompanyUpdate
+from app.schemas.crawler_script import CrawlerScriptUpdate
 from app.services.company_service import CompanyService
 
 router = APIRouter(tags=["companies"])
@@ -47,4 +49,45 @@ async def delete_company(
     service: CompanyService = Depends(get_company_service),
 ):
     await service.delete(db, company_id)
+    return ApiResponse.ok(data=None)
+
+
+# ── Crawler Script endpoints ──
+
+
+@router.get("/companies/{company_id}/crawler-script")
+async def get_crawler_script(
+    company_id: str,
+    db: aiosqlite.Connection = Depends(get_database),
+):
+    row = await script_model.get_script(db, company_id)
+    if not row:
+        return ApiResponse.ok(data=None)
+    return ApiResponse.ok(data={
+        "company_id": row["company_id"],
+        "code": row["code"],
+        "updated_at": row["updated_at"],
+    })
+
+
+@router.put("/companies/{company_id}/crawler-script")
+async def update_crawler_script(
+    company_id: str,
+    body: CrawlerScriptUpdate,
+    db: aiosqlite.Connection = Depends(get_database),
+):
+    row = await script_model.upsert_script(db, company_id, body.code)
+    return ApiResponse.ok(data={
+        "company_id": row["company_id"],
+        "code": row["code"],
+        "updated_at": row["updated_at"],
+    })
+
+
+@router.delete("/companies/{company_id}/crawler-script")
+async def delete_crawler_script(
+    company_id: str,
+    db: aiosqlite.Connection = Depends(get_database),
+):
+    await script_model.delete_script(db, company_id)
     return ApiResponse.ok(data=None)
