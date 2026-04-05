@@ -215,87 +215,110 @@ def _save_cache() -> None:
 _load_cache()
 
 
-def _llm_classify(raw_category: str) -> str | None:
-    """Use LLM to classify an unknown category. Returns standard category or None."""
-    try:
-        from openai import OpenAI
-        from dotenv import load_dotenv
-        load_dotenv()
-
-        client = OpenAI(
-            api_key=os.getenv("LLM_API_KEY"),
-            base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
-        )
-        model = os.getenv("LLM_MODEL", "deepseek-chat")
-
-        categories_str = "、".join(STANDARD_CATEGORIES)
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        f"你是一个岗位分类器。将输入的岗位类别名映射到以下标准类别之一：\n"
-                        f"{categories_str}\n\n"
-                        f"如果无法归类（非技术岗位），返回 null。\n"
-                        f"只返回 JSON：{{\"category\": \"标准类别名\"}} 或 {{\"category\": null}}"
-                    ),
-                },
-                {"role": "user", "content": raw_category},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
-            max_tokens=50,
-        )
-        result = json.loads(response.choices[0].message.content)
-        mapped = result.get("category")
-        if mapped and mapped in STANDARD_CATEGORIES:
-            return mapped
-        return None
-    except Exception as e:
-        logger.warning(f"LLM category classification failed for '{raw_category}': {e}")
-        return None
+# Category classification uses a cheap chat model, NOT the reasoning model.
+# Reasoning models (e.g. deepseek-reasoner) don't support response_format=json_object.
+_CLASSIFY_MODEL = "deepseek-chat"
+_CLASSIFY_MAX_RETRIES = 3
 
 
-def _looks_like_code(s: str) -> bool:
-    """Detect if a string looks like an internal code rather than readable text.
+def _llm_classify(raw_category: str, title: str = "", responsibilities: str = "") -> str | None:
+    """Use LLM to classify a job into a standard category.
 
-    Examples of codes: "j1007", "10001", "R123", "tech_backend"
-    Examples of readable: "后端开发", "算法", "Backend", "机器学习工程师"
-    """
-    import re
-    # Contains any CJK character → readable
-    if re.search(r"[\u4e00-\u9fff]", s):
-        return False
-    # Pure digits or letter+digits pattern → code
-    if re.match(r"^[a-zA-Z]?\d+$", s.strip()):
-        return True
-    # Very short alphanumeric with underscores → likely code
-    if re.match(r"^[a-zA-Z0-9_]{1,10}$", s.strip()) and not s.strip().isalpha():
-        return True
-    return False
-
-
-def normalize_category(raw_category: str) -> str | None:
-    """Normalize a raw category string to one of the 15 standard categories.
+    Sends category + title + responsibilities as context so the LLM can
+    classify even when category is an opaque code (e.g. "j1007").
 
     Returns:
-        Standard category name, or None if the category cannot be mapped
-        (non-tech position).
+        Standard category name if classified successfully.
+        None if LLM determines it's a non-tech category.
+
+    Raises:
+        RuntimeError if LLM API call fails after retries.
+    """
+    from openai import OpenAI
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    api_key = os.getenv("LLM_API_KEY")
+    if not api_key:
+        raise RuntimeError("LLM_API_KEY environment variable not set")
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
+    )
+
+    categories_str = "、".join(STANDARD_CATEGORIES)
+
+    # Build user message with all available context
+    parts = [f"category: {raw_category}"]
+    if title:
+        parts.append(f"title: {title}")
+    if responsibilities:
+        parts.append(f"responsibilities: {responsibilities[:300]}")
+    user_content = "\n".join(parts)
+
+    last_error = None
+    for attempt in range(1, _CLASSIFY_MAX_RETRIES + 1):
+        try:
+            response = client.chat.completions.create(
+                model=_CLASSIFY_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            f"你是一个技术岗位分类器。根据提供的岗位信息，将其归类到以下标准类别之一：\n"
+                            f"{categories_str}\n\n"
+                            f"注意：category 字段可能是内部代码（如 j1007、10001），此时请根据 title 和 responsibilities 来判断。\n"
+                            f"如果是非技术岗位（如产品、设计、运营、市场、销售），返回 null。\n"
+                            f"只返回 JSON：{{\"category\": \"标准类别名\"}} 或 {{\"category\": null}}"
+                        ),
+                    },
+                    {"role": "user", "content": user_content},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+                max_tokens=50,
+            )
+            content = response.choices[0].message.content
+            if not content:
+                raise ValueError("LLM returned empty content")
+            result = json.loads(content)
+            mapped = result.get("category")
+            if mapped and mapped in STANDARD_CATEGORIES:
+                return mapped
+            return None
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"LLM classify attempt {attempt}/{_CLASSIFY_MAX_RETRIES} "
+                f"failed for '{raw_category}': {e}"
+            )
+
+    raise RuntimeError(
+        f"LLM classification failed after {_CLASSIFY_MAX_RETRIES} retries "
+        f"for '{raw_category}': {last_error}"
+    )
+
+
+def normalize_category(
+    raw_category: str,
+    title: str = "",
+    responsibilities: str = "",
+) -> str | None:
+    """Normalize a raw category string to one of the 15 standard categories.
+
+    Args:
+        raw_category: The raw category value (may be readable text OR an opaque code).
+        title: Job title, used as context for LLM classification.
+        responsibilities: Job responsibilities, used as context for LLM classification.
+
+    Returns:
+        Standard category name, or None if non-tech.
     """
     if not raw_category:
         return None
 
     raw_lower = raw_category.strip().lower()
-
-    # Step 0: If it looks like an internal code, skip entirely (don't cache)
-    # The crawler should resolve codes to readable text before output.
-    if _looks_like_code(raw_category):
-        logger.warning(
-            f"Category '{raw_category}' looks like an internal code, skipping. "
-            "The crawler should resolve codes to readable text."
-        )
-        return None
 
     # Step 1: Direct match in standard categories
     if raw_category in STANDARD_CATEGORIES:
@@ -306,16 +329,17 @@ def normalize_category(raw_category: str) -> str | None:
     if mapped:
         return mapped
 
-    # Step 3: Check LLM cache
+    # Step 3: Check LLM cache (keyed by raw value, works for both text and codes)
     with _cache_lock:
         if raw_lower in _llm_cache:
             return _llm_cache[raw_lower]
 
-    # Step 4: LLM fallback
-    logger.info(f"Category '{raw_category}' not in mapping, calling LLM...")
-    result = _llm_classify(raw_category)
+    # Step 4: LLM fallback with full context (handles codes like "j1007" by
+    # using title/responsibilities to determine the correct category)
+    logger.info(f"Category '{raw_category}' not in mapping, calling LLM with context...")
+    result = _llm_classify(raw_category, title=title, responsibilities=responsibilities)
 
-    # Cache the result (including None for non-tech)
+    # Cache the result (keyed by raw category value, including codes)
     with _cache_lock:
         _llm_cache[raw_lower] = result
         _save_cache()
@@ -323,6 +347,6 @@ def normalize_category(raw_category: str) -> str | None:
     if result:
         logger.info(f"LLM mapped '{raw_category}' → '{result}'")
     else:
-        logger.info(f"LLM could not classify '{raw_category}', marking as non-tech")
+        logger.info(f"LLM classified '{raw_category}' as non-tech")
 
     return result
