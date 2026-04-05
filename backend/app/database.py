@@ -43,6 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_location     ON jobs(location);
 CREATE INDEX IF NOT EXISTS idx_jobs_job_type     ON jobs(job_type);
 CREATE INDEX IF NOT EXISTS idx_jobs_posted_date  ON jobs(posted_date DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_content_hash ON jobs(content_hash);
+CREATE INDEX IF NOT EXISTS idx_jobs_source_url   ON jobs(source_url, company_id);
 
 CREATE TABLE IF NOT EXISTS favorites (
     job_id     TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -93,6 +94,13 @@ CREATE TABLE IF NOT EXISTS crawl_tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_crawl_company ON crawl_tasks(company_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS crawler_scripts (
+    company_id  TEXT PRIMARY KEY,
+    code        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 CREATE TABLE IF NOT EXISTS settings (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
