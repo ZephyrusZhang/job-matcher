@@ -5,3 +5,7 @@
 .pytest_cache
 .venv
 **/.DS_Store
+
+backend/data/uploads/
+**/tmp/
+**/logs/
