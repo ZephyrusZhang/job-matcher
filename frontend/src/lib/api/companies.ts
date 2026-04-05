@@ -31,3 +31,30 @@ export async function updateCompany(id: string, data: CompanyUpdate) {
 export function deleteCompany(id: string) {
   return apiDelete<null>(`/api/companies/${id}`)
 }
+
+// Crawler script endpoints
+
+export interface CrawlerScript {
+  company_id: string
+  code: string
+  updated_at: string
+}
+
+export function getCrawlerScript(companyId: string) {
+  return apiGet<CrawlerScript | null>(`/api/companies/${companyId}/crawler-script`)
+}
+
+export async function saveCrawlerScript(companyId: string, code: string) {
+  const res = await fetch(`${API_BASE}/api/companies/${companyId}/crawler-script`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+  const body = await res.json()
+  if (!res.ok) throw new Error(body.error?.message ?? 'Save failed')
+  return body
+}
+
+export function deleteCrawlerScript(companyId: string) {
+  return apiDelete<null>(`/api/companies/${companyId}/crawler-script`)
+}

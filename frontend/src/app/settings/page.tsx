@@ -21,10 +21,11 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageContainer } from "@/components/layout/PageContainer"
-import { Plus, Trash2, Play, Square, Pencil, X, Check, Loader2 } from "lucide-react"
+import { Plus, Trash2, Play, Square, Pencil, X, Check, Loader2, Code2 } from "lucide-react"
 import type { Company, CompanyCreate } from "@/types/company"
 import { getCompanies, createCompany, updateCompany, deleteCompany } from "@/lib/api/companies"
 import { triggerCrawl, cancelCrawlTask, getCrawlTasks } from "@/lib/api/crawl"
+import { CrawlerScriptEditor } from "@/components/settings/CrawlerScriptEditor"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
 
@@ -109,6 +110,8 @@ export default function SettingsPage() {
   const [triggeringIds, setTriggeringIds] = useState<Set<string>>(new Set())
   // Map company_id → active crawl task_id (for cancel)
   const [activeTaskIds, setActiveTaskIds] = useState<Map<string, string>>(new Map())
+  // Which company's code editor is open
+  const [scriptEditorId, setScriptEditorId] = useState<string | null>(null)
 
   const loadCompanies = useCallback(async () => {
     try {
@@ -250,6 +253,7 @@ export default function SettingsPage() {
     isCrawlActive(company) || triggeringIds.has(company.id)
 
   return (
+    <>
     <PageContainer>
       <div className="space-y-[var(--gap-section)]">
         <h1 className="text-xl font-medium text-text-primary">设置</h1>
@@ -421,6 +425,7 @@ export default function SettingsPage() {
                       {triggeringIds.has(company.id) ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
                     </Button>
                   )}
+                  <Button variant="ghost" size="icon-xs" onClick={() => setScriptEditorId(scriptEditorId === company.id ? null : company.id)} className={`hover:bg-neutral-800 ${scriptEditorId === company.id ? "text-blue-400" : "text-text-secondary hover:text-text-primary"}`} title="爬虫代码"><Code2 className="size-3.5" /></Button>
                   <Button variant="ghost" size="icon-xs" onClick={() => startEditing(company)} className="text-text-secondary hover:text-text-primary hover:bg-neutral-800" title="编辑"><Pencil className="size-3.5" /></Button>
                   <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteCompany(company.id, company.name)} className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10" title="删除"><Trash2 className="size-3.5" /></Button>
                 </div>
@@ -495,6 +500,7 @@ export default function SettingsPage() {
                                 {triggeringIds.has(company.id) ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
                               </Button>
                             )}
+                            <Button variant="ghost" size="icon-xs" onClick={() => setScriptEditorId(scriptEditorId === company.id ? null : company.id)} className={`hover:bg-neutral-800 ${scriptEditorId === company.id ? "text-blue-400" : "text-text-secondary hover:text-text-primary"}`} title="爬虫代码"><Code2 className="size-3.5" /></Button>
                             <Button variant="ghost" size="icon-xs" onClick={() => startEditing(company)} className="text-text-secondary hover:text-text-primary hover:bg-neutral-800" title="编辑"><Pencil className="size-3.5" /></Button>
                             <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteCompany(company.id, company.name)} className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10" title="删除"><Trash2 className="size-3.5" /></Button>
                           </div>
@@ -509,5 +515,16 @@ export default function SettingsPage() {
         </div>
       </div>
     </PageContainer>
+
+    {/* Crawler script editor modal */}
+    {scriptEditorId && (
+      <CrawlerScriptEditor
+        companyId={scriptEditorId}
+        companyName={companies.find(c => c.id === scriptEditorId)?.name ?? scriptEditorId}
+        open={true}
+        onClose={() => setScriptEditorId(null)}
+      />
+    )}
+    </>
   )
 }
