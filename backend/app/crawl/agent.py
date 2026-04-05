@@ -155,6 +155,8 @@ class AgentRunner:
         try:
             content = sandbox_mgr.read_file("/home/user/output.json")
             data = json.loads(content)
+            if isinstance(data, dict) and "jobs" in data:
+                return data["jobs"]
             if isinstance(data, list):
                 return data
             return []

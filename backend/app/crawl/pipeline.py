@@ -32,7 +32,7 @@ def normalize_job(raw_job: dict, company_id: str) -> dict:
                 requirements_must.append(line)
 
     raw_category = raw_job.get("category", "")
-    category = normalize_category(raw_category)
+    category = normalize_category(raw_category, title=title, responsibilities=responsibilities)
     location = raw_job.get("location")
     job_type = raw_job.get("job_type")
     department = raw_job.get("department")
@@ -96,24 +96,17 @@ async def store_jobs(
 
         job = normalize_job(raw_job, company_id)
 
-        # Skip non-tech jobs (category could not be mapped)
+        # category is None only when LLM explicitly classified as non-tech
         if not job["category"]:
-            raw_cat = raw_job.get("category", "")
-            logger.warning(
-                f"Skipping job (unmapped category): title='{job['title']}', "
-                f"raw_category='{raw_cat}'"
-            )
             continue
 
-        # Check if content_hash already exists
+        # Dedup by source_url: same company + same page = same job
         async with db.execute(
-            "SELECT id FROM jobs WHERE content_hash = ? AND company_id = ?",
-            (job["content_hash"], company_id),
+            "SELECT id FROM jobs WHERE source_url = ? AND company_id = ?",
+            (job["source_url"], company_id),
         ) as cursor:
-            existing = await cursor.fetchone()
-
-        if existing:
-            continue
+            if await cursor.fetchone():
+                continue
 
         # Insert completes fully before next iteration checks cancel
         await db.execute(
@@ -144,13 +137,14 @@ async def store_jobs(
 def run_crawler(
     career_url: str,
     cancel_event: threading.Event | None = None,
-) -> list[dict]:
+) -> tuple[list[dict], str | None]:
     """Run the AgentRunner synchronously. Call from a thread.
 
-    Returns the list of crawled job dicts.
+    Returns (jobs, crawler_code) — crawler_code is the generated script if available.
     """
     from .agent import AgentRunner
     from .handlers import ConsoleHandler, FileHandler
+    from .tools import sandbox_mgr
 
     runner = AgentRunner(
         handlers=[
@@ -160,4 +154,46 @@ def run_crawler(
         cancel_event=cancel_event,
     )
     jobs = runner.run(f"爬取该招聘网站的所有岗位信息：{career_url}")
-    return jobs if jobs else []
+
+    # Try to extract the generated crawler code for caching
+    crawler_code = None
+    try:
+        crawler_code = sandbox_mgr.read_file("/home/user/crawler.py")
+    except Exception:
+        pass
+
+    return jobs if jobs else [], crawler_code
+
+
+def run_cached_crawler(
+    code: str,
+    cancel_event: threading.Event | None = None,
+) -> list[dict]:
+    """Run cached crawler code directly in sandbox, skip the agent.
+
+    Returns the list of crawled job dicts.
+    """
+    from .tools import sandbox_mgr
+
+    if cancel_event and cancel_event.is_set():
+        return []
+
+    sandbox_mgr.ensure_sandbox()
+    sandbox_mgr.write_file("/home/user/crawler.py", code)
+    result = sandbox_mgr.run_command("python /home/user/crawler.py", timeout=300)
+
+    if result["exit_code"] != 0:
+        stderr = result.get("stderr", "")
+        raise RuntimeError(f"Cached crawler failed (exit {result['exit_code']}): {stderr[-500:]}")
+
+    # Read output
+    try:
+        content = sandbox_mgr.read_file("/home/user/output.json")
+        data = json.loads(content)
+        if isinstance(data, dict) and "jobs" in data:
+            return data["jobs"]
+        if isinstance(data, list):
+            return data
+        return []
+    except Exception as e:
+        raise RuntimeError(f"Failed to read crawler output: {e}")
