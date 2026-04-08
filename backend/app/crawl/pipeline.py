@@ -9,6 +9,7 @@ import uuid
 import aiosqlite
 
 from app.crawl.category import normalize_category, prebatch_classify
+from app.crawl.job_type import normalize_job_type
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def normalize_job(
         generic_cache=generic_cache,
     )
     location = raw_job.get("location")
-    job_type = raw_job.get("job_type")
+    raw_job_type = raw_job.get("job_type")
     department = raw_job.get("department")
     department_product = raw_job.get("department_product")
     education = raw_job.get("education")
@@ -53,13 +54,16 @@ def normalize_job(
     source_url = raw_job.get("source_url", "")
     summary = raw_job.get("summary")
 
-    # For XHS-style data with raw field
-    if "raw" in raw_job and not job_type:
-        job_type = "intern"
+    # For XHS-style data with raw field: assume 实习 when nothing else is set
+    if "raw" in raw_job and not raw_job_type:
+        raw_job_type = "实习"
 
-    # Normalize job_type
-    if job_type and job_type not in ("fulltime", "intern", "parttime", "contract"):
-        job_type = "intern"
+    # Normalize job_type → one of ["实习", "全职"]
+    job_type = normalize_job_type(
+        raw_job_type,
+        title=title,
+        responsibilities=responsibilities,
+    )
 
     content_hash = compute_content_hash(title, responsibilities, requirements_must)
 

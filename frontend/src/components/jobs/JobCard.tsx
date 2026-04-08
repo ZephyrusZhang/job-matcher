@@ -79,8 +79,8 @@ export function JobCard({ job, isFavorited, onToggleFavorite, onClick }: JobCard
           )}
           {job.job_type && (
             <span className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${job.job_type === "intern" ? "bg-blue-400" : job.job_type === "fulltime" ? "bg-emerald-400" : "bg-neutral-500"}`} />
-              {job.job_type === "intern" ? "实习" : job.job_type === "fulltime" ? "全职" : job.job_type === "parttime" ? "兼职" : "合同工"}
+              <span className={`w-1.5 h-1.5 rounded-full ${job.job_type === "实习" ? "bg-blue-400" : "bg-emerald-400"}`} />
+              {job.job_type}
             </span>
           )}
         </div>

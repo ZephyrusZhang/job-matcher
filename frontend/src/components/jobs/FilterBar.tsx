@@ -18,10 +18,8 @@ const JOB_CATEGORIES = [
 ]
 
 const JOB_TYPES = [
-  { value: "fulltime", label: "全职" },
-  { value: "intern", label: "实习" },
-  { value: "parttime", label: "兼职" },
-  { value: "contract", label: "合同工" },
+  { value: "全职", label: "全职" },
+  { value: "实习", label: "实习" },
 ]
 
 const POSTED_WITHIN = [

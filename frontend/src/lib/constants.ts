@@ -1,8 +1,6 @@
 export const JOB_TYPE_COLORS: Record<string, { dot: string; badge: string }> = {
-  "intern": { dot: "bg-blue-400", badge: "bg-blue-500/15 text-blue-400" },
-  "fulltime": { dot: "bg-emerald-400", badge: "bg-emerald-500/15 text-emerald-400" },
-  "parttime": { dot: "bg-amber-400", badge: "bg-amber-500/15 text-amber-400" },
-  "contract": { dot: "bg-purple-400", badge: "bg-purple-500/15 text-purple-400" },
+  "实习": { dot: "bg-blue-400", badge: "bg-blue-500/15 text-blue-400" },
+  "全职": { dot: "bg-emerald-400", badge: "bg-emerald-500/15 text-emerald-400" },
 }
 
 export const CATEGORY_COLORS: Record<string, string> = {
