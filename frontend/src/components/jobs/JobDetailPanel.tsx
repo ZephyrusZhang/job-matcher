@@ -48,13 +48,6 @@ function DetailContent({
   isMobile: boolean
   onClose: () => void
 }) {
-  const jobTypeLabel: Record<string, string> = {
-    fulltime: "全职",
-    intern: "实习",
-    parttime: "兼职",
-    contract: "合同工",
-  }
-
   if (isLoading) {
     return (
       <div className="p-5 sm:p-6 space-y-4">
@@ -101,7 +94,7 @@ function DetailContent({
           {job.job_type && (
             <>
               <span>·</span>
-              <span>{jobTypeLabel[job.job_type] ?? job.job_type}</span>
+              <span>{job.job_type}</span>
             </>
           )}
         </div>

@@ -46,7 +46,7 @@ async def seeded_db(test_db):
             "title": "前端开发工程师",
             "category": "前端",
             "location": "北京",
-            "job_type": "fulltime",
+            "job_type": "全职",
             "responsibilities": "负责前端开发",
             "requirements_must": json.dumps(["React", "TypeScript"]),
             "requirements_nice": json.dumps(["GraphQL"]),
@@ -65,7 +65,7 @@ async def seeded_db(test_db):
             "title": "后端开发工程师",
             "category": "后端",
             "location": "上海",
-            "job_type": "intern",
+            "job_type": "实习",
             "responsibilities": "负责后端开发",
             "requirements_must": json.dumps(["Go", "MySQL"]),
             "requirements_nice": json.dumps(["Redis"]),
@@ -84,7 +84,7 @@ async def seeded_db(test_db):
             "title": "算法工程师",
             "category": "算法",
             "location": "深圳",
-            "job_type": "fulltime",
+            "job_type": "全职",
             "responsibilities": "负责推荐算法",
             "requirements_must": json.dumps(["Python", "PyTorch"]),
             "requirements_nice": json.dumps(["TensorFlow"]),
@@ -129,13 +129,13 @@ async def client(tmp_path):
     # Seed some data
     db = await get_db(config.database.path)
     jobs = [
-        ("j1", "bytedance", "前端工程师", "前端", "北京", "fulltime",
+        ("j1", "bytedance", "前端工程师", "前端", "北京", "全职",
          "前端开发", '["React"]', '["Vue"]', "抖音", "抖音", "本科", "2年",
          "2026-03-27", "https://example.com/1", "前端", "h1"),
-        ("j2", "bytedance", "后端工程师", "后端", "上海", "intern",
+        ("j2", "bytedance", "后端工程师", "后端", "上海", "实习",
          "后端开发", '["Go"]', '[]', "飞书", "飞书", "本科", "无",
          "2026-03-28", "https://example.com/2", "后端", "h2"),
-        ("j3", "tencent", "算法工程师", "算法", "深圳", "fulltime",
+        ("j3", "tencent", "算法工程师", "算法", "深圳", "全职",
          "算法开发", '["Python"]', '[]', "微信", "微信", "硕士", "3年",
          "2026-03-29", "https://example.com/3", "算法", "h3"),
     ]

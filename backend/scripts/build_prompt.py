@@ -174,7 +174,7 @@ def build_prompt(captured: list[dict], target_url: str) -> str:
   "title": "岗位名称 - 职位标题",
   "category": "岗位方向 - 所属技术方向（如算法、后端、前端、机器学习等）",
   "location": "工作地点 - 城市 / 远程 / 混合办公",
-  "job_type": "岗位类型 - 如 intern / full-time / part-time / contract",
+  "job_type": "岗位类型 - 只能是 '实习' 或 '全职' 两个值之一（其他如兼职/合同工统一归为 全职）",
   "responsibilities": "核心职责 - 岗位的主要工作内容描述（保留原文换行）",
   "requirements": "技术要求 - 必备技能与加分技能（保留原文换行）",
   "department": "所属部门 - 该岗位所在的业务部门缩写或代号",
