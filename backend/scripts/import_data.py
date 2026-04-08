@@ -13,12 +13,14 @@ import sys
 from pathlib import Path
 
 import aiosqlite
+from tqdm import tqdm
 
 # Add backend to path
 backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from app.config import load_config
+from app.crawl.category import prebatch_classify
 from app.crawl.pipeline import normalize_job
 from app.database import init_database
 
@@ -37,13 +39,44 @@ async def import_file(db: aiosqlite.Connection, file_path: Path, company_id: str
     skipped_duplicate = 0
     skipped_existing = 0
 
-    for raw_job in raw_jobs:
-        job = normalize_job(raw_job, company_id)
+    print(f"\n📂 {file_path.name} → {company_id}  (共 {len(raw_jobs)} 条)")
+
+    # Pre-batch LLM classification (32 jobs per request)
+    print("⏳ 正在批量调用 LLM 归一化 category...")
+    llm_pbar = tqdm(total=0, desc="LLM 分类", unit="item", ncols=100)
+
+    def llm_progress(done: int, total: int):
+        if llm_pbar.total != total:
+            llm_pbar.total = total
+        llm_pbar.n = done
+        llm_pbar.refresh()
+
+    generic_cache = prebatch_classify(raw_jobs, batch_size=32, progress_callback=llm_progress)
+    llm_pbar.close()
+    print(f"✅ LLM 分类完成 (generic_cache: {len(generic_cache)} 条)")
+
+    pbar = tqdm(
+        raw_jobs,
+        desc="导入中",
+        unit="job",
+        ncols=100,
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {postfix}]",
+    )
+
+    def update_postfix():
+        pbar.set_postfix_str(
+            f"新增={inserted} 已存在={skipped_existing} "
+            f"重复={skipped_duplicate} 非技术={skipped_non_tech}"
+        )
+
+    for raw_job in pbar:
+        job = normalize_job(raw_job, company_id, generic_cache=generic_cache)
 
         # Non-tech job (LLM explicitly classified as null)
         if not job["category"]:
             skipped_non_tech += 1
-            print(f"    [非技术岗] {job['title']}  {raw_job.get('source_url', '')}")
+            tqdm.write(f"  [非技术岗] {job['title']}  {raw_job.get('source_url', '')}")
+            update_postfix()
             continue
 
         source_url = job.get("source_url", "")
@@ -57,13 +90,14 @@ async def import_file(db: aiosqlite.Connection, file_path: Path, company_id: str
                 existing = await cursor.fetchone()
                 if existing:
                     skipped_existing += 1
-                    print(f"    [已存在] {job['title']}  {source_url}")
+                    update_postfix()
                     continue
 
         # Check if source_url already seen in this batch
         if source_url and source_url in _seen_urls:
             skipped_duplicate += 1
-            print(f"    [文件内重复] {job['title']}  {source_url}")
+            tqdm.write(f"  [文件内重复] {job['title']}  {source_url}")
+            update_postfix()
             continue
         if source_url:
             _seen_urls[source_url] = True
@@ -88,18 +122,14 @@ async def import_file(db: aiosqlite.Connection, file_path: Path, company_id: str
             ),
         )
         inserted += 1
+        update_postfix()
 
+    pbar.close()
     await db.commit()
 
-    print(f"\n  📊 {file_path.name} → {company_id}")
-    print(f"     总数: {len(raw_jobs)}")
-    print(f"     新增入库: {inserted}")
-    if skipped_duplicate:
-        print(f"     文件内重复: {skipped_duplicate}")
-    if skipped_existing:
-        print(f"     数据库已存在: {skipped_existing}")
-    if skipped_non_tech:
-        print(f"     非技术岗跳过: {skipped_non_tech}")
+    print(f"\n📊 完成: 总数 {len(raw_jobs)} | 新增 {inserted} | "
+          f"已存在 {skipped_existing} | 文件内重复 {skipped_duplicate} | "
+          f"非技术 {skipped_non_tech}")
 
 
 async def main():

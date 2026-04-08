@@ -1,4 +1,5 @@
 """Crawl pipeline: runs AgentRunner, normalizes output, and stores into DB."""
+import asyncio
 import hashlib
 import json
 import logging
@@ -7,7 +8,7 @@ import uuid
 
 import aiosqlite
 
-from app.crawl.category import normalize_category
+from app.crawl.category import normalize_category, prebatch_classify
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,11 @@ def compute_content_hash(title: str, responsibilities: str, requirements_must: l
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def normalize_job(raw_job: dict, company_id: str) -> dict:
+def normalize_job(
+    raw_job: dict,
+    company_id: str,
+    generic_cache: dict | None = None,
+) -> dict:
     """Normalize crawler output into the DB schema."""
     title = raw_job.get("title", "")
     responsibilities = raw_job.get("responsibilities", "")
@@ -32,7 +37,12 @@ def normalize_job(raw_job: dict, company_id: str) -> dict:
                 requirements_must.append(line)
 
     raw_category = raw_job.get("category", "")
-    category = normalize_category(raw_category, title=title, responsibilities=responsibilities)
+    category = normalize_category(
+        raw_category,
+        title=title,
+        responsibilities=responsibilities,
+        generic_cache=generic_cache,
+    )
     location = raw_job.get("location")
     job_type = raw_job.get("job_type")
     department = raw_job.get("department")
@@ -88,13 +98,20 @@ async def store_jobs(
     jobs_new = 0
     jobs_updated = 0
 
+    # Pre-batch LLM classification (32 jobs per request)
+    logger.info(f"store_jobs: prebatch classifying {jobs_found} jobs...")
+    generic_cache = await asyncio.get_event_loop().run_in_executor(
+        None, prebatch_classify, raw_jobs, 32
+    )
+    logger.info(f"store_jobs: prebatch done, generic_cache={len(generic_cache)} entries")
+
     for raw_job in raw_jobs:
         # Check cancellation before processing next job
         if cancel_event and cancel_event.is_set():
             logger.info(f"store_jobs cancelled after {jobs_new} new inserts")
             break
 
-        job = normalize_job(raw_job, company_id)
+        job = normalize_job(raw_job, company_id, generic_cache=generic_cache)
 
         # category is None only when LLM explicitly classified as non-tech
         if not job["category"]:
