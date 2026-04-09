@@ -85,10 +85,10 @@ function DetailContent({
           {job.title}
         </SheetTitle>
         <div className="flex items-center gap-2 text-sm text-text-secondary flex-wrap">
-          {job.location && (
+          {job.location && job.location.length > 0 && (
             <span className="flex items-center gap-1">
               <MapPin className="h-3 w-3" />
-              {job.location}
+              {job.location.join(" / ")}
             </span>
           )}
           {job.job_type && (

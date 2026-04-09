@@ -3,7 +3,7 @@ export interface FavoriteItem {
   title: string
   category: string
   company_name: string
-  location: string | null
+  location: string[]
   favorited_at: string
 }
 

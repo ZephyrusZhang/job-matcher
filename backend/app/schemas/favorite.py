@@ -15,7 +15,7 @@ class FavoriteJobOut(BaseModel):
     title: str
     category: str
     company_name: str
-    location: str | None = None
+    location: list[str] = []
     favorited_at: str
 
 

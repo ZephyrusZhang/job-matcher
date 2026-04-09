@@ -49,6 +49,20 @@ async def search_jobs(
     )
 
 
+@router.get("/jobs/locations")
+async def list_job_locations(
+    company_id: str,
+    db: aiosqlite.Connection = Depends(get_database),
+    service: JobService = Depends(get_job_service),
+):
+    """Return the deduplicated, sorted list of cities present in a company's jobs.
+
+    Used by the frontend's location filter dropdown.
+    """
+    locations = await service.get_locations(db, company_id)
+    return ApiResponse.ok(data=locations)
+
+
 @router.get("/jobs/suggest")
 async def suggest_jobs(
     q: str,

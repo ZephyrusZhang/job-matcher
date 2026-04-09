@@ -16,7 +16,7 @@ class JobOut(BaseModel):
     title: str
     category: str
     company: CompanyBrief
-    location: str | None = None
+    location: list[str] = []
     job_type: str | None = None
     responsibilities: str | None = None
     requirements: Requirements

@@ -10,6 +10,7 @@ import aiosqlite
 
 from app.crawl.category import normalize_category, prebatch_classify
 from app.crawl.job_type import normalize_job_type
+from app.crawl.location import normalize_location
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def normalize_job(
         responsibilities=responsibilities,
         generic_cache=generic_cache,
     )
-    location = raw_job.get("location")
+    location = normalize_location(raw_job.get("location"))
     raw_job_type = raw_job.get("job_type")
     department = raw_job.get("department")
     department_product = raw_job.get("department_product")
@@ -140,7 +141,8 @@ async def store_jobs(
             """,
             (
                 job["id"], job["company_id"], job["title"], job["category"],
-                job["location"], job["job_type"], job["responsibilities"],
+                json.dumps(job["location"], ensure_ascii=False),
+                job["job_type"], job["responsibilities"],
                 json.dumps(job["requirements_must"], ensure_ascii=False),
                 json.dumps(job["requirements_nice"], ensure_ascii=False),
                 job["department"], job["department_product"],

@@ -109,15 +109,6 @@ function JobsPageContent() {
             setJobs(data.data)
           }
           setPagination(data.pagination)
-
-          // Extract unique locations for filter
-          if (!append && data.data.length > 0) {
-            const locs = [...new Set(data.data.map((j: Job) => j.location).filter(Boolean))] as string[]
-            setLocations((prev) => {
-              const merged = [...new Set([...prev, ...locs])]
-              return merged.sort()
-            })
-          }
         }
       } finally {
         setIsLoading(false)
@@ -130,6 +121,22 @@ function JobsPageContent() {
   useEffect(() => {
     fetchJobs(1)
   }, [fetchJobs])
+
+  // Fetch the list of cities for the location filter whenever the company changes
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setLocations([])
+      return
+    }
+    fetch(`${API_BASE}/api/jobs/locations?company_id=${encodeURIComponent(selectedCompanyId)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          setLocations(data.data as string[])
+        }
+      })
+      .catch(() => setLocations([]))
+  }, [selectedCompanyId])
 
   // Handlers
   const handleCompanyChange = (id: string) => {
