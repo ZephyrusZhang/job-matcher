@@ -13,6 +13,57 @@ from pathlib import Path
 GENERATED_DIR = Path("./generated")
 
 
+# ---- 代码示例（放到模块级常量，避免在 f-string 中被当作表达式解析） ----
+CONCURRENCY_EXAMPLE = '''```python
+import asyncio
+import httpx
+
+SEM_DETAIL = asyncio.Semaphore(10)  # 详情请求并发上限
+SEM_LIST = asyncio.Semaphore(5)     # 列表翻页并发上限
+
+async def fetch_detail(client: httpx.AsyncClient, job_id: str) -> dict | None:
+    async with SEM_DETAIL:
+        for attempt in range(3):
+            try:
+                resp = await client.get(DETAIL_URL, params={"id": job_id}, headers=HEADERS)
+                resp.raise_for_status()
+                return resp.json()
+            except Exception:
+                await asyncio.sleep(2 ** attempt)  # 指数退避
+        return None
+
+async def fetch_list_page(client: httpx.AsyncClient, page: int) -> list[dict]:
+    async with SEM_LIST:
+        resp = await client.get(LIST_URL, params={**FILTERS, "page": page}, headers=HEADERS)
+        return resp.json().get("data", [])
+
+async def main():
+    async with httpx.AsyncClient(timeout=30) as client:
+        # 1. 先请求第 1 页，拿到总页数
+        first = await fetch_list_page(client, 1)
+        total_pages = ...  # 从响应中解析
+
+        # 2. 并发抓取剩余列表页
+        rest_pages = await asyncio.gather(*[
+            fetch_list_page(client, p) for p in range(2, total_pages + 1)
+        ])
+        all_list_items = first + [item for page in rest_pages for item in page]
+
+        # 3. 并发抓取所有详情（关键！不要写成 for + await）
+        details = await asyncio.gather(*[
+            fetch_detail(client, item["id"]) for item in all_list_items
+        ], return_exceptions=True)
+```
+
+**反例（严禁这样写，会让爬虫慢 10 倍以上）**：
+```python
+# ❌ 串行循环 + sleep
+for item in list_items:
+    detail = await fetch_detail(client, item["id"])
+    await asyncio.sleep(2)
+```'''
+
+
 def filter_relevant(captured: list[dict]) -> list[dict]:
     """过滤出与业务数据相关的请求"""
     relevant = []
@@ -155,15 +206,34 @@ def build_prompt(captured: list[dict], target_url: str) -> str:
 
 ## 爬虫代码要求
 
-- 使用 `httpx` 作为 HTTP 客户端（支持异步）
+- 使用 `httpx.AsyncClient` 作为 HTTP 客户端（**必须使用异步**，严禁使用同步 `requests` 或 `httpx.Client`）
 - **必须携带目标页面 URL 中的筛选参数**，将其作为 API 请求参数传递，确保爬取结果与用户在浏览器中看到的筛选结果一致
 - 将筛选参数提取为脚本顶部的常量，方便后续修改
 - 实现翻页逻辑，爬取该筛选条件下的**所有分页**数据
 - 如果列表 API 不包含岗位描述等详细信息，需要额外请求详情 API
-- 加入合理的请求间隔（1-3秒）和错误重试
+- **⚡ 并发要求（非常重要，直接影响爬虫速度）**：
+  - **详情页并发**：当需要请求详情 API 时，**必须**使用 `asyncio.gather` 并行发送同一页所有岗位的详情请求，而不是串行 `for` 循环逐个 `await`。每页通常 10-20 个岗位，应该同时并发触发
+  - **翻页并发**：如果列表 API 的总页数/总数可以从第一页响应中得到，**应**先请求第 1 页拿到 `total`/`total_pages`，再用 `asyncio.gather` 并发请求第 2 ~ N 页的列表（而不是串行翻页）
+  - **并发上限**：使用 `asyncio.Semaphore(N)` 控制最大并发数（详情请求建议 `N=10`，列表翻页建议 `N=5`），避免触发风控
+  - **限流与退避**：不要在每个请求前加 `sleep(1~3)` 这种串行等待；只在命中 429/限流或异常重试时做指数退避（`1s → 2s → 4s`）
+  - **错误重试**：单个请求失败时应重试（最多 3 次），但**不能**因为一个失败阻塞整批 `gather`，使用 `return_exceptions=True` 或 per-task try/except
 - 将结果保存为 JSON 文件
 - 代码中包含必要的请求头（从拦截数据中提取）
 - 添加清晰的中文注释
+
+### Playwright 反爬备选方案（仅在 httpx 直接调用 API 被反爬拦截时使用）
+
+如果 `httpx` 直接请求 API 遭遇反爬（例如返回验证码、403、签名校验失败、Cloudflare 拦截等），可以改用 **Playwright + `page.on("response")`** 的方式：用真实浏览器加载目标页面、触发分页/点击，通过监听响应事件拦截并收集 API 的 JSON 数据。此时必须注意：
+
+- **⚠️ 严禁给 Playwright 配置任何代理**：不要传 `proxy={...}` 参数给 `playwright.chromium.launch()` / `browser.new_context()`，也不要设置 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。很多站点的风控会对代理 IP 做严格校验（尤其是数据中心 IP），走代理反而会被直接拦截；走本机直连 + 真实浏览器指纹才是绕过反爬最稳的组合
+- **必须以无头模式启动**：`playwright.chromium.launch(headless=True)`，严禁使用 `headless=False`（爬虫会在无显示环境/容器中运行）。使用默认的 Chromium 且不修改 UA 为明显伪造值
+- 通过 `page.on("response", handler)` 收集目标 API 响应，在 handler 里 `await response.json()` 解析并入队
+- 即便切到 Playwright 方案，**并发原则仍适用**：可以开多个 `BrowserContext` 并发处理不同分页/详情页（`asyncio.gather` + `Semaphore`），但单个 context 内部的操作需要保持顺序
+- 如果只是详情页被反爬、列表页没问题，优先考虑"列表走 httpx + 详情走 Playwright"的混合方案
+
+### 并发代码示例（务必参考此结构）
+
+{CONCURRENCY_EXAMPLE}
 
 ## 输出数据格式（严格遵守）
 
