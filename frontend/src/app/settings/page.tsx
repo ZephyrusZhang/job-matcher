@@ -26,6 +26,7 @@ import type { Company, CompanyCreate } from "@/types/company"
 import { getCompanies, createCompany, updateCompany, deleteCompany } from "@/lib/api/companies"
 import { triggerCrawl, cancelCrawlTask, getCrawlTasks } from "@/lib/api/crawl"
 import { CrawlerScriptEditor } from "@/components/settings/CrawlerScriptEditor"
+import { ReadOnlyOverlay } from "@/components/common/ReadOnlyOverlay"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
 
@@ -94,7 +95,7 @@ interface EditingCompany {
   crawl_interval_hours: number
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const [density, setDensity] = useState<string>("comfortable")
   const [language, setLanguage] = useState<string>("zh")
   const [companies, setCompanies] = useState<Company[]>([])
@@ -526,5 +527,13 @@ export default function SettingsPage() {
       />
     )}
     </>
+  )
+}
+
+export default function SettingsPage() {
+  return (
+    <ReadOnlyOverlay featureName="设置">
+      <SettingsPageContent />
+    </ReadOnlyOverlay>
   )
 }
