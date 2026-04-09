@@ -98,7 +98,7 @@ export function ConfirmHost() {
               onClick={() => close(true)}
               className={
                 current.destructive
-                  ? "bg-red-500 hover:bg-red-500/90 text-white border-transparent"
+                  ? "bg-red-500 hover:bg-red-500/90 text-[white] border-transparent"
                   : undefined
               }
             >

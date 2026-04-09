@@ -77,6 +77,11 @@
   --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-default);
   --sidebar-ring: #3b82f6;
+
+  /* Nav item active pill — inverted surface in dark, subtle gray in light */
+  --nav-active-bg: #ffffff;
+  --nav-active-fg: #0a0a0a;
+  --nav-hover-bg: rgba(255, 255, 255, 0.06);
 }
 
 @theme inline {
@@ -146,11 +151,139 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Light mode
+   Applied when <html class="light">. We override both the
+   project's semantic tokens AND the Tailwind base color vars
+   (neutral/zinc/white/black) so that the thousands of
+   hard-coded `bg-neutral-900` / `text-white` / `border-neutral-800`
+   classes across the codebase flip automatically, without
+   touching a single component.
+   ───────────────────────────────────────────────────────────── */
+html.light {
+  /* Project semantic tokens */
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f4f4f5;
+  --bg-elevated: #ffffff;
+
+  --border-default: #e5e5e5;
+  --border-subtle: #f0f0f0;
+
+  --text-primary: #0a0a0a;
+  --text-secondary: #525252;
+  --text-muted: #a3a3a3;
+
+  --accent: #0a0a0a;
+  --accent-hover: #262626;
+  --accent-muted: rgba(0, 0, 0, 0.05);
+
+  /* Semantic colors stay saturated; lighten backgrounds slightly */
+  --red-bg: rgba(239, 68, 68, 0.1);
+  --blue-bg: rgba(59, 130, 246, 0.1);
+
+  /* shadcn mapping overrides */
+  --primary-foreground: #ffffff;
+
+  /* Override Tailwind neutral palette so hardcoded `bg-neutral-950`
+     etc. automatically swap tone (near-black ↔ near-white).
+     Mid-range shades are intentionally darker than a direct inversion
+     so borders on form controls (SelectTrigger, Input, Table rows)
+     stay clearly visible against the near-white surfaces. */
+  --color-neutral-950: #ffffff;
+  --color-neutral-900: #fafafa;
+  --color-neutral-800: #e4e4e7;  /* visible border */
+  --color-neutral-700: #d4d4d8;  /* slightly stronger border */
+  --color-neutral-600: #a1a1aa;  /* hover border */
+  --color-neutral-500: #a3a3a3;
+  --color-neutral-400: #737373;
+  --color-neutral-300: #525252;
+  --color-neutral-200: #262626;
+  --color-neutral-100: #171717;
+  --color-neutral-50:  #0a0a0a;
+
+  --color-zinc-950: #ffffff;
+  --color-zinc-900: #fafafa;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-600: #a1a1aa;
+  --color-zinc-500: #a3a3a3;
+  --color-zinc-400: #737373;
+  --color-zinc-300: #525252;
+  --color-zinc-200: #262626;
+
+  /* Flip pure black/white so `text-white` becomes near-black text
+     and `bg-white` becomes near-black surface. A few buttons that
+     need *literal* white (red/green destructive/success CTAs)
+     opt out via the arbitrary-value class `text-[white]`. */
+  --color-white: #0a0a0a;
+  --color-black: #ffffff;
+}
+
+/* Sidebar accent tint flip for light mode (semi-transparent white
+   hover on dark becomes semi-transparent black hover on light). */
+html.light {
+  --sidebar: #fafafa;
+  --sidebar-accent: rgba(0, 0, 0, 0.05);
+  --sidebar-primary: #0a0a0a;
+  --sidebar-primary-foreground: #ffffff;
+
+  /* Softer nav active pill in light mode — light gray instead of
+     inverted pure-black (which reads as too heavy). */
+  --nav-active-bg: #efefef;
+  --nav-active-fg: #0a0a0a;
+  --nav-hover-bg: rgba(0, 0, 0, 0.04);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Light-mode card shadow
+   In dark mode, cards rely on `border-neutral-800` alone (a border
+   is enough contrast against black). In light mode, borders alone
+   look flat / lifeless — so add a soft layered shadow to elements
+   that look like cards: rounded-lg/xl with a neutral or semantic
+   border.
+   ───────────────────────────────────────────────────────────── */
+html.light .rounded-lg[class*="border-neutral"],
+html.light .rounded-lg[class*="border-border"],
+html.light .rounded-xl[class*="border-neutral"],
+html.light .rounded-xl[class*="border-border"] {
+  box-shadow:
+    0 1px 2px 0 rgb(0 0 0 / 0.04),
+    0 1px 3px 0 rgb(0 0 0 / 0.05);
+}
+
+/* Elevate on hover (matches dashboard-style cards in the reference). */
+html.light .rounded-lg[class*="border-neutral"]:hover,
+html.light .rounded-xl[class*="border-neutral"]:hover {
+  box-shadow:
+    0 2px 4px 0 rgb(0 0 0 / 0.05),
+    0 4px 12px 0 rgb(0 0 0 / 0.06);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Popup / dropdown outline for light mode
+   shadcn's SelectContent / PopoverContent use `ring-1 ring-foreground/10`
+   by default, which at 10% opacity on a white page reads as
+   "no border". Give them a stronger 1px outline + drop shadow
+   via a layered box-shadow, so the dropdown panel is clearly
+   separated from the page behind it.
+   ───────────────────────────────────────────────────────────── */
+html.light [data-slot="select-content"],
+html.light [data-slot="popover-content"],
+html.light [data-slot="select-popup"] {
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.08),
+    0 10px 15px -3px rgb(0 0 0 / 0.08),
+    0 4px 6px -4px rgb(0 0 0 / 0.05) !important;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #404040; }
+html.light ::-webkit-scrollbar-thumb { background: #d4d4d4; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #a3a3a3; }
 
 /* Streaming cursor */
 @keyframes blink {
@@ -162,3 +295,269 @@
   color: #3b82f6;
   animation: blink 1s ease-in-out infinite;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Celestial theme switch
+   Drives `<ThemeToggle />`. Pure CSS spring animation, drifting
+   clouds, twinkling stars, rotating sun rays and a moon crescent
+   that morphs out of the sun via a mask-like overlay.
+   ───────────────────────────────────────────────────────────── */
+.theme-switch {
+  position: relative;
+  width: 56px;
+  height: 28px;
+  border-radius: 9999px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+  isolation: isolate;
+  transition: box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.theme-switch:focus-visible {
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.35);
+}
+
+/* Track — animated gradient background (cosmos ↔ daylight) */
+.theme-switch__track {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  transition:
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+.theme-switch--dark .theme-switch__track {
+  background:
+    radial-gradient(circle at 30% 50%, #2a1b5e 0%, transparent 55%),
+    linear-gradient(135deg, #0b0f2b 0%, #1a1746 50%, #040712 100%);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 0.6),
+    inset 0 0 12px rgb(100 70 255 / 0.15);
+}
+.theme-switch--light .theme-switch__track {
+  background:
+    radial-gradient(circle at 80% 30%, #fde68a 0%, transparent 60%),
+    linear-gradient(135deg, #7cc6ff 0%, #a5d8ff 50%, #e0f2fe 100%);
+  box-shadow:
+    inset 0 1px 2px rgb(255 255 255 / 0.5),
+    inset 0 -2px 6px rgb(125 211 252 / 0.35);
+}
+
+/* Outer glow halo that pulses softly on hover */
+.theme-switch__glow {
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  transition: opacity 0.4s ease;
+}
+.theme-switch--dark .theme-switch__glow {
+  background: radial-gradient(circle, rgb(130 100 255 / 0.4) 0%, transparent 70%);
+}
+.theme-switch--light .theme-switch__glow {
+  background: radial-gradient(circle, rgb(255 200 80 / 0.45) 0%, transparent 70%);
+}
+.theme-switch:hover .theme-switch__glow {
+  opacity: 1;
+}
+
+/* Stars — twinkle + only visible when dark */
+.theme-switch__star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: #ffffff;
+  border-radius: 9999px;
+  box-shadow: 0 0 3px rgb(255 255 255 / 0.8);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  z-index: 1;
+}
+.theme-switch--dark .theme-switch__star {
+  opacity: 1;
+  animation: switch-twinkle 2s ease-in-out infinite;
+}
+.theme-switch__star--1 { top: 6px;  right: 8px;  animation-delay: 0s; }
+.theme-switch__star--2 { top: 14px; right: 18px; animation-delay: 0.4s; width: 1.5px; height: 1.5px; }
+.theme-switch__star--3 { top: 9px;  right: 24px; animation-delay: 0.8s; }
+.theme-switch__star--4 { top: 18px; right: 10px; animation-delay: 1.2s; width: 1.5px; height: 1.5px; }
+
+@keyframes switch-twinkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.6); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+
+/* Clouds — drift + only visible when light */
+.theme-switch__cloud {
+  position: absolute;
+  background: rgb(255 255 255 / 0.85);
+  border-radius: 9999px;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  box-shadow:
+    4px 0 0 -1px rgb(255 255 255 / 0.85),
+    -4px 0 0 -1px rgb(255 255 255 / 0.85);
+  z-index: 1;
+}
+.theme-switch--light .theme-switch__cloud {
+  opacity: 1;
+  animation: switch-drift 5s ease-in-out infinite;
+}
+.theme-switch__cloud--1 {
+  width: 6px; height: 4px;
+  top: 6px; left: 8px;
+  animation-delay: 0s;
+}
+.theme-switch__cloud--2 {
+  width: 5px; height: 3px;
+  top: 17px; left: 20px;
+  animation-delay: 1.5s;
+}
+
+@keyframes switch-drift {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  25%      { transform: translateX(2px) translateY(-1px); }
+  50%      { transform: translateX(3px) translateY(0); }
+  75%      { transform: translateX(1px) translateY(1px); }
+}
+
+/* Thumb OUTER layer — only translates X with spring easing.
+   Split from the scale/squash so one transform never clobbers
+   the other (see switch-squash keyframes below). */
+.theme-switch__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  transform: translateX(0);
+  transition: transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-switch--light .theme-switch__thumb {
+  transform: translateX(28px);
+}
+
+/* Thumb INNER layer — only scales.  The squash animation runs here
+   so it can't reset translateX back to 0 mid-slide. */
+.theme-switch__thumb-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(1);
+}
+.theme-switch--pressed .theme-switch__thumb-inner {
+  animation: switch-squash 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes switch-squash {
+  0%   { transform: scale(1); }
+  30%  { transform: scaleX(1.25) scaleY(0.82); }
+  65%  { transform: scaleX(0.9)  scaleY(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* Sun rays — rotate continuously in light, hidden in dark */
+.theme-switch__rays {
+  position: absolute;
+  inset: 0;
+  display: block;
+  transition:
+    transform 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.4s ease;
+}
+.theme-switch--dark .theme-switch__rays {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.3);
+}
+.theme-switch--light .theme-switch__rays {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+  animation: switch-spin 12s linear infinite;
+}
+@keyframes switch-spin {
+  to { transform: rotate(360deg); }
+}
+.theme-switch__ray {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 5px;
+  margin-left: -1px;
+  margin-top: -2.5px;
+  background: #fbbf24;
+  border-radius: 1px;
+  transform-origin: center 11px;
+  box-shadow: 0 0 4px rgb(251 191 36 / 0.9);
+}
+
+/* Body — the circle itself */
+.theme-switch__body {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  transition:
+    background 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+.theme-switch--dark .theme-switch__body {
+  background: radial-gradient(circle at 35% 30%, #f4f4f5 0%, #a1a1aa 80%, #52525b 100%);
+  box-shadow:
+    0 0 6px rgb(200 200 255 / 0.5),
+    inset -1px -1px 3px rgb(0 0 0 / 0.35);
+}
+.theme-switch--light .theme-switch__body {
+  background: radial-gradient(circle at 35% 30%, #fef3c7 0%, #fbbf24 60%, #f59e0b 100%);
+  box-shadow:
+    0 0 10px rgb(251 191 36 / 0.7),
+    inset -1px -1px 2px rgb(180 80 0 / 0.3);
+}
+
+/* Moon crescent — a dark circle offset to carve an eclipse */
+.theme-switch__crescent {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #1a1746;
+  opacity: 0;
+  transform: scale(0) translate(4px, -2px);
+  transition:
+    transform 0.55s cubic-bezier(0.68, -0.55, 0.265, 1.55),
+    opacity 0.35s ease;
+}
+.theme-switch--dark .theme-switch__crescent {
+  opacity: 1;
+  transform: scale(1) translate(0, 0);
+}
+
+/* Moon craters — tiny dark dots on the moon surface */
+.theme-switch__crater {
+  position: absolute;
+  border-radius: 9999px;
+  background: rgb(100 100 130 / 0.5);
+  opacity: 0;
+  transition: opacity 0.4s ease 0.1s;
+}
+.theme-switch--dark .theme-switch__crater { opacity: 1; }
+.theme-switch__crater--1 { top: 4px;  left: 4px; width: 3px; height: 3px; }
+.theme-switch__crater--2 { top: 9px;  left: 7px; width: 2px; height: 2px; }
+.theme-switch__crater--3 { top: 5px;  left: 9px; width: 1.5px; height: 1.5px; }

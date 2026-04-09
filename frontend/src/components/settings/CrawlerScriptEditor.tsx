@@ -117,7 +117,7 @@ export function CrawlerScriptEditor({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-[rgb(0_0_0_/_0.6)]" onClick={onClose} />
 
       {/* Dialog */}
       <div className="relative w-[90vw] max-w-4xl h-[80vh] bg-neutral-950 border border-neutral-700 rounded-xl shadow-2xl flex flex-col overflow-hidden">
@@ -153,7 +153,7 @@ export function CrawlerScriptEditor({
               size="xs"
               onClick={handleSave}
               disabled={!hasChanges || isSaving || !code.trim()}
-              className="bg-green-600 text-white hover:bg-green-500 disabled:opacity-30"
+              className="bg-green-600 text-[white] hover:bg-green-500 disabled:opacity-30"
             >
               {isSaving ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Save className="size-3.5 mr-1" />}
               保存

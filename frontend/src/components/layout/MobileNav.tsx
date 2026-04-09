@@ -17,7 +17,7 @@ export function MobileNav() {
 
   return (
     <nav className="md:hidden flex items-center border-b border-border-default bg-bg-secondary shrink-0">
-      <span className="text-white font-semibold text-sm px-4 shrink-0">JM</span>
+      <span className="text-text-primary font-semibold text-sm px-4 shrink-0">JM</span>
       <div className="flex flex-1 overflow-x-auto">
         {navItems.map((item) => {
           const isActive = pathname === item.href
@@ -29,8 +29,8 @@ export function MobileNav() {
               className={cn(
                 "flex items-center gap-1.5 px-3 py-3 text-xs whitespace-nowrap transition-colors border-b-2",
                 isActive
-                  ? "text-white border-white"
-                  : "text-neutral-500 border-transparent hover:text-neutral-300"
+                  ? "text-text-primary border-[var(--nav-active-fg)]"
+                  : "text-text-muted border-transparent hover:text-text-secondary"
               )}
             >
               <Icon className="h-3.5 w-3.5 shrink-0" />
