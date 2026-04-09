@@ -112,7 +112,8 @@ async def import_file(db: aiosqlite.Connection, file_path: Path, company_id: str
             """,
             (
                 job["id"], job["company_id"], job["title"], job["category"],
-                job["location"], job["job_type"], job["responsibilities"],
+                json.dumps(job["location"], ensure_ascii=False),
+                job["job_type"], job["responsibilities"],
                 json.dumps(job["requirements_must"], ensure_ascii=False),
                 json.dumps(job["requirements_nice"], ensure_ascii=False),
                 job["department"], job["department_product"],
