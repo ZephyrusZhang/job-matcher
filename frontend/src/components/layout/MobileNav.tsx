@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutList, Target, BarChart3, Settings } from "lucide-react"
+import { ThemeToggle } from "@/components/common/ThemeToggle"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -38,6 +39,11 @@ export function MobileNav() {
             </Link>
           )
         })}
+      </div>
+      {/* Theme switch — pinned to the right edge on mobile so it stays
+          visible regardless of how many nav items scroll horizontally. */}
+      <div className="px-3 shrink-0">
+        <ThemeToggle />
       </div>
     </nav>
   )
