@@ -3,6 +3,8 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { AppShell } from "@/components/layout/AppShell"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { Toaster } from "@/components/ui/toast"
+import { ConfirmHost } from "@/components/ui/confirm"
 
 const inter = Inter({
   variable: "--font-sans",
@@ -24,6 +26,8 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans">
         <TooltipProvider>
           <AppShell>{children}</AppShell>
+          <Toaster />
+          <ConfirmHost />
         </TooltipProvider>
       </body>
     </html>

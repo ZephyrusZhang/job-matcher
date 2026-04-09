@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react"
 import { Code2, Save, Trash2, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/toast"
+import { confirmDialog } from "@/components/ui/confirm"
 import {
   getCrawlerScript,
   saveCrawlerScript,
@@ -80,22 +82,30 @@ export function CrawlerScriptEditor({
       await saveCrawlerScript(companyId, code)
       setOriginalCode(code)
       setUpdatedAt(new Date().toISOString())
+      toast.success("已保存爬虫代码")
     } catch (err: any) {
-      alert(err.message || "保存失败")
+      toast.error("保存失败", err?.message)
     } finally {
       setIsSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!confirm("确定删除已缓存的爬虫代码？下次爬取将重新生成。")) return
+    const ok = await confirmDialog({
+      title: "删除爬虫代码",
+      description: "确定删除已缓存的爬虫代码？下次爬取将重新生成。",
+      confirmLabel: "删除",
+      destructive: true,
+    })
+    if (!ok) return
     try {
       await deleteCrawlerScript(companyId)
       setCode("")
       setOriginalCode("")
       setUpdatedAt(null)
+      toast.success("已删除爬虫代码")
     } catch (err: any) {
-      alert(err.message || "删除失败")
+      toast.error("删除失败", err?.message)
     }
   }
 
