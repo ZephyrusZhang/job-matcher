@@ -447,12 +447,11 @@ def prebatch_classify(
 
     for raw_job in raw_jobs:
         raw_cat = raw_job.get("category", "") or ""
-        if not raw_cat:
-            continue
         title = raw_job.get("title", "") or ""
         responsibilities = raw_job.get("responsibilities", "") or ""
         raw_lower = raw_cat.strip().lower()
-        is_generic = _is_generic_category(raw_lower)
+        # Treat empty category same as generic: depend on title/responsibilities for LLM
+        is_generic = (not raw_cat) or _is_generic_category(raw_lower)
 
         if is_generic:
             # Generic: dedupe by (raw_lower, title)
@@ -534,11 +533,10 @@ def normalize_category(
     Returns:
         Standard category name, or None if non-tech.
     """
-    if not raw_category:
-        return None
-
-    raw_lower = raw_category.strip().lower()
-    is_generic = _is_generic_category(raw_lower)
+    # Empty raw category: fall through to the "generic" path so we can still
+    # classify using title/responsibilities (some crawlers don't return category).
+    raw_lower = raw_category.strip().lower() if raw_category else ""
+    is_generic = (not raw_category) or _is_generic_category(raw_lower)
 
     # For generic categories (e.g. "技术类", "技术类-软件"), the category alone
     # doesn't determine the standard class — the answer depends on the title.
