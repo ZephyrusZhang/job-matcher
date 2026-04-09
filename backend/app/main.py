@@ -10,6 +10,7 @@ from app.config import load_config
 from app.database import init_database
 from app.dependencies import init_services
 from app.exceptions import AppError
+from app.middleware import ReadOnlyMiddleware
 from app.routers import (
     chat,
     companies,
@@ -88,6 +89,10 @@ app.include_router(chat.router, prefix="/api")
 app.include_router(crawl.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 
+
+# Read-only demo mode (activated via READ_ONLY_MODE env var).
+# Registered before CORS so CORS headers still land on 403 responses.
+app.add_middleware(ReadOnlyMiddleware)
 
 # CORS — configured after lifespan sets up config, so use permissive defaults
 # The actual origins are set in lifespan via config
