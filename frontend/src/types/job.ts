@@ -3,7 +3,7 @@ export interface Job {
   title: string
   category: string
   company: { id: string; name: string }
-  location: string | null
+  location: string[]
   job_type: string | null
   responsibilities: string
   requirements: { must_have: string[]; nice_to_have: string[] }

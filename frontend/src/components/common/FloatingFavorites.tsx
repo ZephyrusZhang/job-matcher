@@ -189,10 +189,10 @@ export function FloatingFavorites() {
                           </button>
                         </div>
                         <div className="flex items-center gap-3 text-xs text-neutral-500">
-                          {job.location && (
-                            <span className="flex items-center gap-1">
+                          {job.location && job.location.length > 0 && (
+                            <span className="flex items-center gap-1 truncate">
                               <MapPin className="h-3 w-3 shrink-0" />
-                              {job.location}
+                              <span className="truncate">{job.location.join(" / ")}</span>
                             </span>
                           )}
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[job.category] || "bg-neutral-800 text-neutral-400"}`}>

@@ -51,10 +51,21 @@ class ContextManager:
                 except json.JSONDecodeError:
                     requirements_must = []
 
+            raw_location = job.get("location")
+            if isinstance(raw_location, str) and raw_location.lstrip().startswith("["):
+                try:
+                    raw_location = json.loads(raw_location)
+                except json.JSONDecodeError:
+                    pass
+            if isinstance(raw_location, list):
+                location_str = "、".join(raw_location) if raw_location else "未知"
+            else:
+                location_str = raw_location or "未知"
+
             parts.append(
                 f"岗位 {i}: {job['title']}\n"
                 f"  方向: {job['category']}\n"
-                f"  地点: {job.get('location', '未知')}\n"
+                f"  地点: {location_str}\n"
                 f"  职责: {job.get('responsibilities', '未知')}\n"
                 f"  必备技能: {', '.join(requirements_must) if requirements_must else '未知'}\n"
                 f"  部门: {job.get('department', '未知')}\n"

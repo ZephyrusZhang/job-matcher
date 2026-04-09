@@ -5,6 +5,7 @@ from app.models import favorite as fav_model
 from app.models import job as job_model
 from app.schemas.favorite import FavoriteJobOut, FavoriteOut, FavoriteSummaryItem
 from app.services.company_service import CompanyService
+from app.services.job_service import _parse_location_field
 
 
 class FavoriteService:
@@ -39,7 +40,7 @@ class FavoriteService:
                     title=row["title"],
                     category=row["category"],
                     company_name=company_name,
-                    location=row.get("location"),
+                    location=_parse_location_field(row.get("location")),
                     favorited_at=row["created_at"],
                 )
             )

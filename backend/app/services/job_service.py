@@ -3,11 +3,38 @@ import math
 
 import aiosqlite
 
+from app.crawl.location import normalize_location
 from app.exceptions import JobNotFoundError
 from app.models import job as job_model
 from app.schemas.common import PaginationMeta
 from app.schemas.job import CompanyBrief, JobOut, Requirements
 from app.services.company_service import CompanyService
+
+
+def _parse_location_field(raw: str | None) -> list[str]:
+    """Parse a DB location field into a list of cities.
+
+    Handles three forms for backward compatibility:
+      - JSON array string: '["北京","上海"]'   (new format)
+      - Legacy raw string: "深圳总部 / 北京"   (old format, pre-migration)
+      - None / empty
+    """
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        stripped = raw.lstrip()
+        if stripped.startswith("["):
+            try:
+                value = json.loads(raw)
+                if isinstance(value, list):
+                    return [str(v) for v in value if v]
+            except json.JSONDecodeError:
+                pass
+        # Fallback: treat as legacy raw string and normalize on the fly.
+        return normalize_location(raw)
+    return []
 
 
 class JobService:
@@ -22,6 +49,8 @@ class JobService:
         if isinstance(nice_to_have, str):
             nice_to_have = json.loads(nice_to_have) if nice_to_have else []
 
+        location = _parse_location_field(row.get("location"))
+
         company_name = self.company_service.get_company_name(row["company_id"]) or row["company_id"]
 
         return JobOut(
@@ -29,7 +58,7 @@ class JobService:
             title=row["title"],
             category=row["category"],
             company=CompanyBrief(id=row["company_id"], name=company_name),
-            location=row.get("location"),
+            location=location,
             job_type=row.get("job_type"),
             responsibilities=row.get("responsibilities"),
             requirements=Requirements(must_have=must_have, nice_to_have=nice_to_have),
@@ -100,3 +129,18 @@ class JobService:
         self, db: aiosqlite.Connection, q: str, limit: int = 5
     ) -> list[str]:
         return await job_model.suggest_jobs(db, q, limit)
+
+    async def get_locations(
+        self, db: aiosqlite.Connection, company_id: str
+    ) -> list[str]:
+        """Aggregate the distinct cities across all jobs of a company."""
+        rows = await job_model.get_company_location_rows(db, company_id)
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for row in rows:
+            for city in _parse_location_field(row.get("location")):
+                if city not in seen:
+                    seen.add(city)
+                    ordered.append(city)
+        ordered.sort()
+        return ordered

@@ -4,6 +4,23 @@ from datetime import datetime, timezone
 import aiosqlite
 
 
+def _serialize_location(value) -> str:
+    """Serialize a location value (list or string) into the JSON-array storage form."""
+    if value is None:
+        return "[]"
+    if isinstance(value, list):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, str):
+        # Already serialized — keep as-is
+        stripped = value.lstrip()
+        if stripped.startswith("["):
+            return value
+        # Legacy raw string — wrap as single-element list (caller should have
+        # normalized upstream, this is just a safety net).
+        return json.dumps([value] if value else [], ensure_ascii=False)
+    return "[]"
+
+
 async def get_jobs(
     db: aiosqlite.Connection,
     company_id: str,
@@ -27,8 +44,11 @@ async def get_jobs(
         params.extend(categories)
 
     if location:
+        # location is stored as a JSON array string like '["北京","上海"]'.
+        # Match when the requested city appears as an element — we look for
+        # the exact quoted form to avoid "北京" matching "北京市" substrings.
         conditions.append("j.location LIKE ?")
-        params.append(f"%{location}%")
+        params.append(f'%"{location}"%')
 
     if job_type:
         conditions.append("j.job_type = ?")
@@ -160,7 +180,7 @@ async def insert_job(db: aiosqlite.Connection, job: dict) -> None:
         """,
         (
             job["id"], job["company_id"], job["title"], job["category"],
-            job.get("location"), job.get("job_type"),
+            _serialize_location(job.get("location")), job.get("job_type"),
             job.get("responsibilities"),
             json.dumps(job.get("requirements_must", []), ensure_ascii=False),
             json.dumps(job.get("requirements_nice", []), ensure_ascii=False),
@@ -172,6 +192,18 @@ async def insert_job(db: aiosqlite.Connection, job: dict) -> None:
             job.get("updated_at", datetime.now(timezone.utc).isoformat()),
         ),
     )
+
+
+async def get_company_location_rows(
+    db: aiosqlite.Connection, company_id: str
+) -> list[dict]:
+    """Return raw {location} rows for a company so the service can aggregate cities."""
+    async with db.execute(
+        "SELECT DISTINCT location FROM jobs WHERE company_id = ? AND location IS NOT NULL",
+        (company_id,),
+    ) as cursor:
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
 
 async def get_job_count_by_company(db: aiosqlite.Connection, company_id: str) -> int:
