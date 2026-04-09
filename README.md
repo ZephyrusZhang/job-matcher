@@ -231,9 +231,15 @@ LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
 
 # 前端访问后端的地址（浏览器端发起请求）
-# 本地部署用 http://localhost:8000
-# 远程服务器用 http://<服务器IP>:8000
+# - 本地部署：                http://localhost:8000
+# - 裸 IP 直连：               http://<服务器IP>:8000
+# - 通过 Nginx 反代 + 域名：   https://<你的域名>（无需端口，走 /api/ 同源转发）
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+
+# 只读演示模式（可选，公网演示推荐开启）
+# 开启后屏蔽 /match /compare /settings 三个功能，详见 "只读演示模式" 章节
+# READ_ONLY_MODE=true
+# NEXT_PUBLIC_READ_ONLY_MODE=true
 ```
 
 #### 2. 构建爬虫沙箱镜像
@@ -308,54 +314,76 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 </details>
 
 <details>
-<summary>前端</summary>
+<summary>前端（standalone 模式，推荐）</summary>
+
+项目 `next.config.ts` 开启了 `output: "standalone"`，`bun run build` 之后会在 `.next/standalone/` 下生成一个自包含的 Node.js 服务器。但 Next.js 的 standalone 产物**不会自动拷贝** `.next/static/` 和 `public/`（官方设计：静态资源通常交给 CDN/反代，不强制塞进 standalone 目录），所以必须手动补齐，否则 `/_next/static/*` 和 `public` 下的静态文件会 404。
 
 ```bash
 cd frontend
 
-# 安装依赖 & 构建
+# 1. 安装依赖
 bun install
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 bun run build
 
-# 启动生产服务
-bun start --port 3000
+# 2. 构建（NEXT_PUBLIC_* 必须在 build 时注入，否则被编译进 bundle 的是空值）
+NEXT_PUBLIC_API_BASE_URL=https://<your-domain> bun run build
+
+# 3. 把 static 资源和 public 目录手动拷贝到 standalone 产物里
+#    - .next/static    → 编译产物（JS/CSS chunks、字体），必须放到 standalone/.next/static
+#    - public          → 项目根 public 目录，standalone 运行时从当前工作目录读取
+cp -r .next/static .next/standalone/.next/
+cp -r public        .next/standalone/
+
+# 4. 启动（指定监听端口，与 Nginx upstream 保持一致）
+PORT=<frontend-port> node .next/standalone/server.js
 ```
+
+> 如果使用 `bun start` 旧方式（依赖完整的 `.next` + `node_modules`），则不需要上面两次 `cp`；但镜像体积会显著更大，也不适合只打包产物分发的场景。
 
 </details>
 
 <details>
-<summary>Nginx 反向代理（可选）</summary>
+<summary>Nginx 反向代理（推荐，支持域名）</summary>
+
+假设前端监听 `127.0.0.1:8848`、后端监听 `127.0.0.1:3001`，通过 Nginx 将两者统一暴露在同一个域名下：
 
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com;
+    server_name <your-domain>;   # 换成你的域名
 
-    # 前端
+    # 前端：Next.js 服务
     location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    # 后端 API
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:<frontend-port>;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+    }
 
-        # SSE 支持
-        proxy_set_header Connection '';
+    # 后端 API：保留 /api/ 前缀原样转发
+    # 访问 <your-domain>/api/jobs → 127.0.0.1:<backend-port>/api/jobs
+    location /api/ {
+        # 注意：proxy_pass 结尾不能带任何路径或斜杠，否则会吃掉 /api 前缀
+        proxy_pass http://127.0.0.1:<backend-port>;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        # FastAPI 流式响应 (SSE) 必须关闭缓冲
         proxy_buffering off;
         proxy_cache off;
-        chunked_transfer_encoding on;
     }
 }
 ```
+
+由于前后端挂在同一个域名下，前端构建时 `NEXT_PUBLIC_API_BASE_URL` 直接填域名即可（无需端口）：
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://<your-domain> bun run build
+```
+
+建议再通过 `certbot --nginx -d <your-domain>` 申请 HTTPS 证书，以便 SSE 长连接与浏览器 Mixed-Content 策略兼容。
 
 </details>
 
@@ -387,6 +415,30 @@ sudo systemctl enable --now job-matcher-backend
 ```
 
 </details>
+
+### 🔒 只读演示模式（Read-only Demo）
+
+如果你希望将项目部署到**公网供访客浏览/体验**，但又不想暴露可写操作（例如避免被滥用触发 LLM 调用、公司 CRUD、爬虫任务等），可以开启**只读演示模式**。开启后：
+
+- 前端会在 `/match`、`/compare`、`/settings` 三个页面覆盖一层蒙版，提示"该功能在演示环境中不可用，如需使用请自行部署"，页面布局和导航保持不变
+- 后端会在中间件层直接返回 `403 READ_ONLY_MODE` 错误，拦截以下请求，**防止用户绕过前端直接调用 API**：
+  - `/api/match/*`、`/api/compare/*`（所有 HTTP 方法，完整屏蔽）
+  - `/api/settings`、`/api/companies`、`/api/crawl`、`/api/resume` 的所有写方法（POST / PUT / PATCH / DELETE）
+- 公共只读接口（岗位列表、岗位详情、公司列表 GET、收藏读写等）仍然正常工作
+
+前后端通过环境变量独立开关，本地开发时不设置即可恢复完整功能：
+
+```env
+# backend/.env（或 docker-compose.yml 的 environment）
+READ_ONLY_MODE=true
+
+# frontend 构建时注入（standalone 部署）
+NEXT_PUBLIC_READ_ONLY_MODE=true bun run build
+```
+
+> ⚠️ `NEXT_PUBLIC_*` 变量会被 Next.js 编译进客户端 bundle，**必须在 `bun run build` 时注入**，运行时再改不会生效。
+>
+> 两个变量必须**同时开启**：只开前端会被用户改浏览器 JS 绕过，只开后端则蒙版不显示、用户点击按钮会看到原始 403 错误。
 
 ## 🗂️ 项目结构
 
