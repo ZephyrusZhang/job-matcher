@@ -141,7 +141,7 @@ export function FloatingFavorites() {
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black/30"
+            className="fixed inset-0 z-40 bg-[rgb(0_0_0_/_0.3)]"
             onClick={() => setIsOpen(false)}
           />
 

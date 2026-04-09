@@ -416,8 +416,8 @@ export function AnalysisPageLayout({
                 <div
                   className={`max-w-[85%] rounded-lg px-4 py-3 ${
                     msg.role === "user"
-                      ? "bg-blue-950/50 border border-blue-900/30 text-white"
-                      : "bg-neutral-950 border border-neutral-800 text-white"
+                      ? "bg-blue-500/15 border border-blue-500/30 text-text-primary"
+                      : "bg-neutral-950 border border-neutral-800 text-text-primary"
                   }`}
                 >
                   {msg.role === "assistant" ? (
