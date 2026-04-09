@@ -27,6 +27,8 @@ import { getCompanies, createCompany, updateCompany, deleteCompany } from "@/lib
 import { triggerCrawl, cancelCrawlTask, getCrawlTasks } from "@/lib/api/crawl"
 import { CrawlerScriptEditor } from "@/components/settings/CrawlerScriptEditor"
 import { ReadOnlyOverlay } from "@/components/common/ReadOnlyOverlay"
+import { toast } from "@/components/ui/toast"
+import { confirmDialog } from "@/components/ui/confirm"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
 
@@ -173,7 +175,7 @@ function SettingsPageContent() {
       setNewCompany({ id: "", name: "", career_url: "", crawl_interval_hours: 12 })
       await loadCompanies()
     } catch (err: any) {
-      alert(err.message || "添加失败")
+      toast.error("添加失败", err?.message)
     }
   }
 
@@ -189,17 +191,23 @@ function SettingsPageContent() {
       setEditingData(null)
       await loadCompanies()
     } catch (err: any) {
-      alert(err.message || "更新失败")
+      toast.error("更新失败", err?.message)
     }
   }
 
   const handleDeleteCompany = async (id: string, name: string) => {
-    if (!confirm(`确定要删除「${name}」吗？`)) return
+    const ok = await confirmDialog({
+      title: "删除公司",
+      description: `确定要删除「${name}」吗？该公司下的岗位数据也会一并移除。`,
+      confirmLabel: "删除",
+      destructive: true,
+    })
+    if (!ok) return
     try {
       await deleteCompany(id)
       await loadCompanies()
     } catch (err: any) {
-      alert(err.message || "删除失败")
+      toast.error("删除失败", err?.message)
     }
   }
 
@@ -211,7 +219,7 @@ function SettingsPageContent() {
       setActiveTaskIds((prev) => new Map(prev).set(companyId, res.data.id))
       await loadCompanies()
     } catch (err: any) {
-      alert(err.message || "触发失败")
+      toast.error("触发采集失败", err?.message)
     } finally {
       setTriggeringIds((prev) => {
         const next = new Set(prev)
@@ -233,7 +241,7 @@ function SettingsPageContent() {
       })
       await loadCompanies()
     } catch (err: any) {
-      alert(err.message || "取消失败")
+      toast.error("取消失败", err?.message)
     }
   }
 
