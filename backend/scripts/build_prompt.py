@@ -193,6 +193,12 @@ def build_prompt(captured: list[dict], target_url: str) -> str:
 目标页面: {target_url}
 
 **注意：上述目标页面 URL 中包含用户指定的筛选参数（如岗位类型、工作地点、关键词等）。请仔细分析 URL 中的查询参数以及拦截到的 API 请求中对应的筛选字段，生成的爬虫代码必须携带这些相同的筛选条件，确保只爬取符合该筛选条件下的所有分页数据。**
+
+**⚠️ 岗位类型覆盖要求（极其重要）**：虽然拦截数据可能只包含某一种岗位类型（例如只有"全职"或只有"实习"）的请求样本，但生成的爬虫**必须同时爬取"实习"和"全职"两种岗位类型的全部数据**，一个都不能漏。具体做法：
+- 分析 API 请求参数中控制岗位类型的字段（常见字段名：`job_type` / `recruit_type` / `category` / `type` / `post_type` / `employment_type` 等，或 URL path 中的 `intern` / `campus` / `society` 段）
+- 把岗位类型做成一个可遍历的常量列表（例如 `JOB_TYPES = ["intern", "fulltime"]`），在代码中**循环或并发遍历**每一种类型，分别完整翻页抓取
+- 如果站点将实习和社招/校招拆在不同的 API 路径或不同的域名（例如 `/api/intern/list` vs `/api/society/list`），**两条路径都要实现并爬取**
+- 最终汇总到同一个输出 JSON 文件中，并保证每条岗位的 `job_type` 字段被正确标注为 `实习` 或 `全职`
 {detail_instruction}
 
 请分析这些请求，完成以下任务:
