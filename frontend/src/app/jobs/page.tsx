@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense, type RefCallback } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { Inbox, SearchX, Search, X } from "lucide-react"
+import { Inbox, SearchX, Search, X, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { PageContainer } from "@/components/layout/PageContainer"
 import { CompanySelector } from "@/components/jobs/CompanySelector"
@@ -295,7 +295,7 @@ function JobsPageContent() {
             </span>
             <button
               onClick={() => { setSearchInput(""); router.push("/jobs") }}
-              className="text-zinc-400 text-xs hover:text-text-primary hover:underline cursor-pointer"
+              className="text-text-muted text-xs hover:text-text-primary hover:underline cursor-pointer"
             >
               清除搜索
             </button>
@@ -356,12 +356,19 @@ function JobsPageContent() {
         {hasMore && (
           <div ref={loadMoreRef} className="flex justify-center py-6">
             {isLoadingMore && (
-              <span className="text-sm text-text-muted">加载中...</span>
+              <span className="flex items-center gap-2 text-sm text-text-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                加载中
+              </span>
             )}
           </div>
         )}
         {!hasMore && jobs.length > 0 && !isLoading && (
-          <p className="text-center text-text-muted text-sm py-4">已加载全部岗位</p>
+          <div className="flex items-center justify-center gap-3 py-6">
+            <span className="h-px w-8 bg-border-default" />
+            <span className="text-xs text-text-muted">已加载全部 {pagination?.total} 个岗位</span>
+            <span className="h-px w-8 bg-border-default" />
+          </div>
         )}
 
         {/* Detail Panel */}

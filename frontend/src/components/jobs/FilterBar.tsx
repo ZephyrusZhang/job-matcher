@@ -1,5 +1,6 @@
 "use client"
 
+import { Check } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -114,7 +115,7 @@ export function FilterBar({ filters, locations, onChange, companies, selectedCom
                 <SelectItem key={cat} value={cat} className={`text-sm rounded-lg mb-1 last:mb-0 py-1.5 ${colors}`}>
                   <span className="flex items-center justify-between w-full gap-3">
                     <span>{cat}</span>
-                    {selected && <span className="text-emerald-400">✓</span>}
+                    {selected && <Check className="h-3.5 w-3.5 text-emerald-400" />}
                   </span>
                 </SelectItem>
               )

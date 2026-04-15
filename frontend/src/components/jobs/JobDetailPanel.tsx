@@ -25,9 +25,10 @@ interface JobDetailPanelProps {
   onToggleFavorite: (jobId: string) => void
 }
 
-function SectionTitle({ children, color = "border-zinc-500" }: { children: React.ReactNode; color?: string }) {
+function SectionTitle({ children, color = "bg-zinc-500" }: { children: React.ReactNode; color?: string }) {
   return (
-    <h4 className={`text-white text-sm font-medium border-l-2 ${color} pl-3`}>
+    <h4 className="text-text-primary text-sm font-medium flex items-center gap-2">
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${color}`} />
       {children}
     </h4>
   )
@@ -106,20 +107,20 @@ function DetailContent({
 
         {job.summary && (
           <div className="space-y-2">
-            <SectionTitle color="border-blue-500">职位概述</SectionTitle>
+            <SectionTitle color="bg-blue-500">职位概述</SectionTitle>
             <p className="text-sm text-text-primary leading-relaxed">{job.summary}</p>
           </div>
         )}
 
         <div className="space-y-2">
-          <SectionTitle color="border-emerald-500">核心职责</SectionTitle>
+          <SectionTitle color="bg-emerald-500">核心职责</SectionTitle>
           <p className="text-sm text-text-primary leading-relaxed whitespace-pre-line">
             {job.responsibilities}
           </p>
         </div>
 
         <div className="space-y-2">
-          <SectionTitle color="border-orange-500">技术要求</SectionTitle>
+          <SectionTitle color="bg-orange-500">技术要求</SectionTitle>
           {job.requirements.must_have.length > 0 && (
             <div className="space-y-1.5">
               {job.requirements.must_have.map((s, i) => (
@@ -138,7 +139,7 @@ function DetailContent({
 
         {(job.department || job.department_product) && (
           <div className="space-y-2">
-            <SectionTitle color="border-violet-500">团队与产品</SectionTitle>
+            <SectionTitle color="bg-violet-500">团队与产品</SectionTitle>
             {job.department && (
               <p className="text-sm text-text-primary">
                 <span className="text-text-secondary">部门: </span>
@@ -156,7 +157,7 @@ function DetailContent({
       </div>
 
       {/* Footer */}
-      <div className="sticky bottom-0 bg-neutral-950 border-t border-neutral-800 p-3 sm:p-4 flex gap-3">
+      <div className="sticky bottom-0 bg-bg-secondary border-t border-border-default p-3 sm:p-4 flex gap-3">
         <Button
           variant="outline"
           onClick={() => onToggleFavorite(job.id)}

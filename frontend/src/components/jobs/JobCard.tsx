@@ -10,6 +10,7 @@ interface JobCardProps {
   isFavorited: boolean
   onToggleFavorite: (jobId: string) => void
   onClick: (jobId: string) => void
+  index?: number
 }
 
 function formatRelativeTime(dateStr: string | null): string {
@@ -26,14 +27,18 @@ function formatRelativeTime(dateStr: string | null): string {
   return `${Math.floor(diffDays / 30)}月前`
 }
 
-export function JobCard({ job, isFavorited, onToggleFavorite, onClick }: JobCardProps) {
+export function JobCard({ job, isFavorited, onToggleFavorite, onClick, index = 0 }: JobCardProps) {
   return (
     <div
       className={cn(
         "bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden",
-        "hover:border-neutral-600 cursor-pointer transition-colors",
-        "p-4 flex flex-col gap-2.5 h-[160px]"
+        "hover:border-neutral-600 cursor-pointer",
+        "transition-[border-color,transform] duration-200 ease-out",
+        "hover:-translate-y-0.5",
+        "p-4 flex flex-col gap-2.5 h-[160px]",
+        "animate-card-in"
       )}
+      style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
       onClick={() => onClick(job.id)}
     >
       {/* Header: company name + favorite */}

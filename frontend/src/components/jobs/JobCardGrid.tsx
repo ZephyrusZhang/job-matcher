@@ -50,13 +50,14 @@ export function JobCardGrid({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-[var(--gap-grid)]">
-      {jobs.map((job) => (
+      {jobs.map((job, i) => (
         <JobCard
           key={job.id}
           job={job}
           isFavorited={favoriteIds.has(job.id)}
           onToggleFavorite={onToggleFavorite}
           onClick={onCardClick}
+          index={i}
         />
       ))}
     </div>
