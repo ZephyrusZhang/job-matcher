@@ -17,6 +17,18 @@
             ],
             "console": "integratedTerminal",
             "python": "${workspaceFolder}/backend/.venv/bin/python"
+        },
+        {
+            "name": "Import Data",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/scripts/import_data.py",
+            "args": [
+                "bilibili",
+                "${workspaceFolder}/backend/generated/bilibili.json"
+            ],
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/backend/.venv/bin/python"
         }
     ]
 }
