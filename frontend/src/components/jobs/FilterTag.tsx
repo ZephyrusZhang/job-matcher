@@ -1,4 +1,5 @@
 import { X } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { CATEGORY_COLORS } from "@/lib/constants"
 
 interface FilterTagProps {
@@ -8,12 +9,16 @@ interface FilterTagProps {
 
 export function FilterTag({ label, onRemove }: FilterTagProps) {
   const categoryColor = CATEGORY_COLORS[label]
-  const colorClass = categoryColor
-    ? categoryColor
-    : "bg-blue-500/10 text-blue-400 border-blue-500/20"
 
   return (
-    <span className={`inline-flex items-center gap-1 border text-xs rounded-[var(--radius-sm)] px-2 py-1 ${categoryColor ? `${colorClass} border-transparent` : colorClass}`}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 text-xs rounded-[var(--radius-sm)] px-2 py-1 border",
+        categoryColor
+          ? `${categoryColor} border-transparent`
+          : "bg-blue-500/10 text-blue-400 border-blue-500/20"
+      )}
+    >
       {label}
       <button
         onClick={onRemove}
