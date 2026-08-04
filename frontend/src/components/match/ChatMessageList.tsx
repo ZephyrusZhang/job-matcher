@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { ReportRenderer } from "@/components/report/ReportRenderer"
+import { MarkdownRenderer } from "@/components/match/MarkdownRenderer"
 import { JobCitationCards } from "@/components/match/JobCitationCard"
 import { ToolTimeline } from "@/components/match/ToolTimeline"
 import { cn } from "@/lib/utils"
@@ -69,7 +69,7 @@ function AssistantTurn({
   const hasAnything = narration || toolEvents.length > 0 || finalAnswer
 
   return (
-    <div className="max-w-[92%]">
+    <div>
       {narration && (
         <p className="mb-2 whitespace-pre-wrap text-xs leading-relaxed text-text-muted">
           {narration}
@@ -79,7 +79,7 @@ function AssistantTurn({
       <ToolTimeline events={toolEvents} />
 
       {finalAnswer ? (
-        <ReportRenderer content={finalAnswer} isStreaming={isStreaming} />
+        <MarkdownRenderer content={finalAnswer} isStreaming={isStreaming} />
       ) : (
         isStreaming &&
         !hasAnything && <p className="text-sm text-text-muted">正在思考…</p>
@@ -116,7 +116,7 @@ export function ChatMessageList({
   }, [messages.length, finalAnswer, toolEvents.length, narration])
 
   return (
-    <div className="space-y-5 px-4 py-6">
+    <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6">
       {messages.map((message) =>
         message.role === "user" ? (
           <UserBubble key={message.id} message={message} />

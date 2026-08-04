@@ -9,9 +9,8 @@ from app.config import UploadConfig
 from app.exceptions import FileFormatError, FileTooLargeError, ResumeNotFoundError
 from app.llm.client import LLMClient
 from app.llm.prompts import parse_resume
-from app.models import report as report_model
 from app.models import resume as resume_model
-from app.schemas.resume import ClearResult, ParsedResume, ResumeOut, ResumeUploadOut
+from app.schemas.resume import ParsedResume, ResumeOut, ResumeUploadOut
 from app.utils.file_parser import FileParser
 
 logger = logging.getLogger(__name__)
@@ -50,8 +49,7 @@ class ResumeService:
             make_default: Promote the new resume to the default.
 
         Returns:
-            The stored resume. ``cleared`` is populated only when this upload
-            became the default, since that invalidates existing reports.
+            The stored resume.
 
         Raises:
             FileFormatError: Unsupported extension.
@@ -82,19 +80,10 @@ class ResumeService:
             parsed = {"skills": [], "experience_years": None, "education": None}
         parsed["raw_text"] = raw_text
 
-        had_none = await resume_model.count_resumes(db) == 0
         stored = await resume_model.create_resume(
             db, filename, str(file_path), parsed, label=label, make_default=make_default
         )
-
-        # Reports are generated against a specific resume, so they only go stale
-        # when the default changes — not on every additional upload.
-        cleared = ClearResult()
-        if stored["is_default"] and not had_none:
-            reports_deleted, messages_deleted = await report_model.delete_all_reports(db)
-            cleared = ClearResult(reports_deleted=reports_deleted, messages_deleted=messages_deleted)
-
-        return ResumeUploadOut(**self._to_out(stored).model_dump(), cleared=cleared)
+        return ResumeUploadOut(**self._to_out(stored).model_dump())
 
     async def get(self, db: aiosqlite.Connection, resume_id: str | None = None) -> ResumeOut | None:
         """Return one resume, defaulting to the current default."""
@@ -124,20 +113,15 @@ class ResumeService:
             await resume_model.rename_resume(db, resume_id, label)
         if is_default:
             await resume_model.set_default_resume(db, resume_id)
-            # Existing reports were produced from the previous default.
-            await report_model.delete_all_reports(db)
 
         return self._to_out(await resume_model.get_resume(db, resume_id))  # type: ignore[arg-type]
 
-    async def delete(self, db: aiosqlite.Connection, resume_id: str | None = None) -> ClearResult:
+    async def delete(self, db: aiosqlite.Connection, resume_id: str | None = None) -> None:
         """Delete a resume and its file.
 
         Args:
             db: Open connection.
             resume_id: Resume to delete. ``None`` deletes the default.
-
-        Returns:
-            What the cascade removed.
 
         Raises:
             ResumeNotFoundError: When the resume does not exist.
@@ -150,11 +134,4 @@ class ResumeService:
         if file_path.exists():
             file_path.unlink()
 
-        was_default = data["is_default"]
         await resume_model.delete_resume(db, data["id"])
-
-        # Reports only depend on the default resume.
-        if was_default:
-            reports_deleted, messages_deleted = await report_model.delete_all_reports(db)
-            return ClearResult(reports_deleted=reports_deleted, messages_deleted=messages_deleted)
-        return ClearResult()

@@ -55,11 +55,11 @@ async def delete_resume_by_id(
     service: ResumeService = Depends(get_resume_service),
 ):
     """Delete one resume."""
-    result = await service.delete(db, resume_id)
-    return ApiResponse.ok(data={"cleared": result.model_dump()})
+    await service.delete(db, resume_id)
+    return ApiResponse.ok(data=None)
 
 
-# ── Singleton API — kept because /compare assumes a single resume ─────────
+# ── Singleton shortcuts for the default resume ────────────────────────────
 
 
 @router.post("/resume/upload")
@@ -89,5 +89,5 @@ async def delete_resume(
     service: ResumeService = Depends(get_resume_service),
 ):
     """Delete the default resume."""
-    result = await service.delete(db)
-    return ApiResponse.ok(data={"cleared": result.model_dump()})
+    await service.delete(db)
+    return ApiResponse.ok(data=None)

@@ -2,14 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutList, Target, BarChart3, Settings } from "lucide-react"
+import { LayoutList, Target, Settings } from "lucide-react"
 import { ThemeToggle } from "@/components/common/ThemeToggle"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { href: "/jobs", label: "岗位", icon: LayoutList },
   { href: "/match", label: "匹配", icon: Target },
-  { href: "/compare", label: "对比", icon: BarChart3 },
   { href: "/settings", label: "设置", icon: Settings },
 ]
 

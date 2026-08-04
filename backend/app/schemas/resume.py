@@ -8,11 +8,6 @@ class ParsedResume(BaseModel):
     raw_text: str = ""
 
 
-class ClearResult(BaseModel):
-    reports_deleted: int = 0
-    messages_deleted: int = 0
-
-
 class ResumeOut(BaseModel):
     id: str
     label: str
@@ -23,7 +18,7 @@ class ResumeOut(BaseModel):
 
 
 class ResumeUploadOut(ResumeOut):
-    cleared: ClearResult = ClearResult()
+    pass
 
 
 class ResumeUpdate(BaseModel):

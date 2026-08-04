@@ -5,8 +5,6 @@ import pytest
 from app.models import job as job_model
 from app.models import favorite as fav_model
 from app.models import resume as resume_model
-from app.models import report as report_model
-from app.models import chat as chat_model
 from app.models import crawl_task as task_model
 
 
@@ -137,64 +135,8 @@ async def test_resume_crud(seeded_db):
     assert await resume_model.get_resume(db) is None
     assert await resume_model.delete_resume(db, "missing") is False
 
-async def test_report_crud(seeded_db):
-    """Test report upsert/get/delete."""
-    db = seeded_db
-    report_id = str(uuid.uuid4())
-
-    await report_model.upsert_report(
-        db, report_id, "bytedance", "match",
-        "# Report", ["j1", "j2"],
-        {"interest": "前端", "additional": ""},
-    )
-
-    report = await report_model.get_report(db, "bytedance", "match")
-    assert report is not None
-    assert report["content"] == "# Report"
-    assert report["job_ids"] == ["j1", "j2"]
-
-    # Get by ID
-    report = await report_model.get_report_by_id(db, report_id)
-    assert report is not None
-
-    # Delete
-    deleted = await report_model.delete_report(db, "bytedance", "match")
-    assert deleted == 1
-
-    report = await report_model.get_report(db, "bytedance", "match")
-    assert report is None
 
 
-@pytest.mark.asyncio
-async def test_chat_crud(seeded_db):
-    """Test chat message insert and history."""
-    db = seeded_db
-
-    # Create a report first
-    report_id = str(uuid.uuid4())
-    await report_model.upsert_report(
-        db, report_id, "bytedance", "match",
-        "Report", ["j1"], {"interest": "test", "additional": ""},
-    )
-
-    # Insert messages
-    msg1_id = str(uuid.uuid4())
-    msg2_id = str(uuid.uuid4())
-    await chat_model.insert_message(db, msg1_id, report_id, "user", "Hello")
-    await chat_model.insert_message(db, msg2_id, report_id, "assistant", "Hi there")
-
-    history = await chat_model.get_chat_history(db, report_id)
-    assert len(history) == 2
-    assert history[0]["role"] == "user"
-    assert history[1]["role"] == "assistant"
-
-    # Cascade delete: delete report should delete messages
-    await report_model.delete_report(db, "bytedance", "match")
-    history = await chat_model.get_chat_history(db, report_id)
-    assert len(history) == 0
-
-
-@pytest.mark.asyncio
 async def test_crawl_task_crud(seeded_db):
     """Test crawl task operations."""
     db = seeded_db

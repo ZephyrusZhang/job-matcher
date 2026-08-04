@@ -1,33 +1,36 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Check, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react"
+import { useConversationStore } from "@/store/useConversationStore"
 import { cn } from "@/lib/utils"
 import type { Conversation } from "@/types/match"
 
-interface ConversationSidebarProps {
-  conversations: Conversation[]
-  activeId: string | null
-  onSelect: (id: string) => void
-  onCreate: () => void
-  onRename: (id: string, title: string) => void
-  onDelete: (id: string) => void
-}
-
 /**
- * Flat, ungrouped list of every conversation, most recently used first.
+ * Conversation history, rendered inside the app sidebar.
+ *
+ * Deliberately not its own panel: /match previously stacked a second sidebar
+ * next to the app nav, which read as clutter. The nav has ample unused vertical
+ * space, so the list lives there and the page keeps a single sidebar.
  */
-export function ConversationSidebar({
-  conversations,
-  activeId,
-  onSelect,
-  onCreate,
-  onRename,
-  onDelete,
-}: ConversationSidebarProps) {
+export function ConversationList() {
+  const conversations = useConversationStore((s) => s.conversations)
+  const activeId = useConversationStore((s) => s.activeId)
+  const select = useConversationStore((s) => s.select)
+  const fetchAll = useConversationStore((s) => s.fetch)
+  const create = useConversationStore((s) => s.create)
+  const rename = useConversationStore((s) => s.rename)
+  const remove = useConversationStore((s) => s.remove)
+
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
   const [menuId, setMenuId] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchAll()
+  }, [fetchAll])
+
+  const effectiveId = activeId ?? conversations[0]?.id ?? null
 
   const startRename = (conversation: Conversation) => {
     setEditingId(conversation.id)
@@ -37,41 +40,45 @@ export function ConversationSidebar({
 
   const commitRename = (id: string) => {
     const title = draft.trim()
-    if (title) onRename(id, title)
+    if (title) rename(id, title)
     setEditingId(null)
   }
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border-subtle bg-bg-secondary">
-      <div className="p-2">
+    <div className="mt-1 flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-between px-3 pb-1">
+        <span className="text-[11px] text-text-muted">对话记录</span>
         <button
           type="button"
-          onClick={onCreate}
-          className="flex w-full items-center gap-2 rounded-md border border-border-subtle px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-tertiary"
+          onClick={() => create()}
+          className="rounded p-1 text-text-muted transition-colors hover:bg-[var(--nav-hover-bg)] hover:text-text-primary"
+          aria-label="新对话"
+          title="新对话"
         >
-          <Plus className="h-4 w-4" />
-          新对话
+          <Plus className="h-3.5 w-3.5" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5">
         {conversations.length === 0 ? (
-          <p className="px-3 py-6 text-xs text-text-muted">还没有对话</p>
+          <p className="px-1.5 py-2 text-xs text-text-muted">还没有对话</p>
         ) : (
           conversations.map((conversation) => {
-            const isActive = conversation.id === activeId
+            const isActive = conversation.id === effectiveId
             const isEditing = editingId === conversation.id
 
             return (
               <div
                 key={conversation.id}
                 className={cn(
-                  "group relative mb-0.5 rounded-md",
-                  isActive ? "bg-bg-tertiary" : "hover:bg-bg-tertiary/60",
+                  "group relative mb-0.5 rounded-[var(--radius-sm)]",
+                  isActive
+                    ? "bg-[var(--nav-active-bg)]"
+                    : "hover:bg-[var(--nav-hover-bg)]",
                 )}
               >
                 {isEditing ? (
-                  <div className="flex items-center gap-1 px-2 py-1.5">
+                  <div className="flex items-center gap-1 px-1.5 py-1">
                     <input
                       autoFocus
                       value={draft}
@@ -80,31 +87,36 @@ export function ConversationSidebar({
                         if (e.key === "Enter") commitRename(conversation.id)
                         if (e.key === "Escape") setEditingId(null)
                       }}
-                      className="min-w-0 flex-1 rounded border border-border-default bg-bg-primary px-1.5 py-0.5 text-sm text-text-primary outline-none"
+                      className="min-w-0 flex-1 rounded border border-border-default bg-bg-primary px-1.5 py-0.5 text-xs text-text-primary outline-none"
                     />
                     <button
                       type="button"
                       onClick={() => commitRename(conversation.id)}
                       className="text-text-muted hover:text-text-primary"
-                      aria-label="确认重命名"
+                      aria-label="确认"
                     >
-                      <Check className="h-3.5 w-3.5" />
+                      <Check className="h-3 w-3" />
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditingId(null)}
                       className="text-text-muted hover:text-text-primary"
-                      aria-label="取消重命名"
+                      aria-label="取消"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-3 w-3" />
                     </button>
                   </div>
                 ) : (
                   <>
                     <button
                       type="button"
-                      onClick={() => onSelect(conversation.id)}
-                      className="block w-full truncate px-3 py-2 pr-8 text-left text-sm text-text-primary"
+                      onClick={() => select(conversation.id)}
+                      className={cn(
+                        "block w-full truncate px-2 py-1.5 pr-7 text-left text-xs",
+                        isActive
+                          ? "text-[var(--nav-active-fg)]"
+                          : "text-text-secondary",
+                      )}
                       title={conversation.title}
                     >
                       {conversation.title || "新对话"}
@@ -116,22 +128,22 @@ export function ConversationSidebar({
                         setMenuId(menuId === conversation.id ? null : conversation.id)
                       }
                       className={cn(
-                        "absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-text-muted transition-opacity hover:text-text-primary",
+                        "absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-text-muted transition-opacity hover:text-text-primary",
                         menuId === conversation.id
                           ? "opacity-100"
                           : "opacity-0 group-hover:opacity-100",
                       )}
                       aria-label="更多操作"
                     >
-                      <MoreHorizontal className="h-3.5 w-3.5" />
+                      <MoreHorizontal className="h-3 w-3" />
                     </button>
 
                     {menuId === conversation.id && (
-                      <div className="absolute right-1 top-full z-20 mt-0.5 w-28 overflow-hidden rounded-md border border-border-default bg-bg-elevated shadow-lg">
+                      <div className="absolute right-1 top-full z-30 mt-0.5 w-24 overflow-hidden rounded-md border border-border-default bg-bg-elevated shadow-lg">
                         <button
                           type="button"
                           onClick={() => startRename(conversation)}
-                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-text-primary hover:bg-bg-tertiary"
+                          className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs text-text-primary hover:bg-bg-tertiary"
                         >
                           <Pencil className="h-3 w-3" />
                           重命名
@@ -140,9 +152,9 @@ export function ConversationSidebar({
                           type="button"
                           onClick={() => {
                             setMenuId(null)
-                            onDelete(conversation.id)
+                            remove(conversation.id)
                           }}
-                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-red-400 hover:bg-bg-tertiary"
+                          className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs text-red-400 hover:bg-bg-tertiary"
                         >
                           <Trash2 className="h-3 w-3" />
                           删除
@@ -156,6 +168,6 @@ export function ConversationSidebar({
           })
         )}
       </div>
-    </aside>
+    </div>
   )
 }

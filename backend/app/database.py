@@ -63,27 +63,6 @@ CREATE TABLE IF NOT EXISTS resumes (
 
 CREATE INDEX IF NOT EXISTS idx_resumes_default ON resumes(is_default DESC, uploaded_at DESC);
 
-CREATE TABLE IF NOT EXISTS reports (
-    id          TEXT PRIMARY KEY,
-    company_id  TEXT NOT NULL,
-    report_type TEXT NOT NULL,
-    content     TEXT NOT NULL,
-    job_ids     TEXT NOT NULL,
-    preferences TEXT NOT NULL,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(company_id, report_type)
-);
-
-CREATE TABLE IF NOT EXISTS chat_messages (
-    id         TEXT PRIMARY KEY,
-    report_id  TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
-    role       TEXT NOT NULL,
-    content    TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_chat_report ON chat_messages(report_id, created_at);
-
 CREATE TABLE IF NOT EXISTS crawl_tasks (
     id            TEXT PRIMARY KEY,
     company_id    TEXT NOT NULL,
@@ -106,8 +85,7 @@ CREATE TABLE IF NOT EXISTS crawler_scripts (
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Conversational job matching. Separate from chat_messages, which is bound to
--- reports(id) and serves the report follow-up feature.
+-- Conversational job matching.
 CREATE TABLE IF NOT EXISTS match_conversations (
     id         TEXT PRIMARY KEY,
     title      TEXT NOT NULL DEFAULT '',

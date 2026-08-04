@@ -25,9 +25,7 @@ from app.dependencies import init_services
 from app.exceptions import AppError
 from app.middleware import ReadOnlyMiddleware
 from app.routers import (
-    chat,
     companies,
-    compare,
     crawl,
     favorites,
     jobs,
@@ -155,8 +153,6 @@ app.include_router(jobs.router, prefix="/api")
 app.include_router(favorites.router, prefix="/api")
 app.include_router(resume.router, prefix="/api")
 app.include_router(match.router, prefix="/api")
-app.include_router(compare.router, prefix="/api")
-app.include_router(chat.router, prefix="/api")
 app.include_router(crawl.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 

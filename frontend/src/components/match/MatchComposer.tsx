@@ -112,7 +112,7 @@ export function MatchComposer({
 
   return (
     <div className="border-t border-border-subtle bg-bg-primary px-4 py-3">
-      <div className="rounded-lg border border-border-subtle bg-bg-secondary focus-within:border-border-default">
+      <div className="mx-auto w-full max-w-3xl rounded-lg border border-border-subtle bg-bg-secondary focus-within:border-border-default">
         <textarea
           ref={textareaRef}
           rows={2}
