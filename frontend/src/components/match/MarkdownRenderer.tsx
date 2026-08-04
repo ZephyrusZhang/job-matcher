@@ -2,6 +2,9 @@
 
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { JobCard } from "@/components/match/JobCard"
+import { JobRefChip } from "@/components/match/JobRefChip"
+import { remarkJobEmbed, trimPartialMarker } from "@/lib/remarkJobEmbed"
 import { cn } from "@/lib/utils"
 
 interface MarkdownRendererProps {
@@ -12,10 +15,14 @@ interface MarkdownRendererProps {
 export function MarkdownRenderer({ content, isStreaming }: MarkdownRendererProps) {
   if (!content) return null
 
+  // While tokens are still arriving the tail may hold half a `:job[…]` marker,
+  // which would otherwise flash as raw text before it completes.
+  const body = isStreaming ? trimPartialMarker(content) : content
+
   return (
     <div className={cn("prose-invert max-w-none", isStreaming && "streaming-cursor")}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkJobEmbed]}
         components={{
           h1: ({ children }) => (
             <h1 className="text-lg font-medium text-text-primary mt-6 mb-3">{children}</h1>
@@ -105,9 +112,18 @@ export function MarkdownRenderer({ content, isStreaming }: MarkdownRendererProps
               {children}
             </pre>
           ),
+
+          // Emitted by remarkJobEmbed, never written as literal markup: a
+          // paragraph holding only `:job[…]` markers becomes a card group,
+          // a marker inside prose becomes an inline chip.
+          "job-card-group": ({ children }) => (
+            <div className="my-3 grid gap-1.5 sm:grid-cols-2">{children}</div>
+          ),
+          "job-card": ({ jobId }) => (jobId ? <JobCard id={jobId} /> : null),
+          "job-ref": ({ jobId }) => (jobId ? <JobRefChip id={jobId} /> : null),
         }}
       >
-        {content}
+        {body}
       </ReactMarkdown>
     </div>
   )

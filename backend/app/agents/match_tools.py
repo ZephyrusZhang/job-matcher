@@ -275,7 +275,12 @@ list_favorites = StructuredTool.from_function(
 class FinalAnswerArgs(BaseModel):
     """Arguments for ``final_answer``."""
 
-    answer: str = Field(description="给用户的完整最终回复，Markdown 格式")
+    answer: str = Field(
+        description=(
+            "给用户的完整最终回复，Markdown 格式。"
+            "提到具体岗位时用 :job[岗位id] 嵌入岗位卡片，id 从检索工具返回中原样复制。"
+        )
+    )
 
 
 async def _final_answer(answer: str) -> str:
@@ -290,6 +295,8 @@ final_answer = StructuredTool.from_function(
     description=(
         "每一轮对话的【唯一正式出口】，必须调用它来结束本轮。"
         "answer 写给用户看的完整最终回复，使用 Markdown。"
+        "提到具体岗位时用 :job[岗位id] 嵌入岗位卡片，id 从检索工具返回中原样复制；"
+        "推荐岗位时让标记独占一行（渲染成完整卡片），顺带提及时写在句中（渲染成芯片）。"
         "必须单独调用，不要和其他工具在同一轮里一起调用。"
     ),
     args_schema=FinalAnswerArgs,

@@ -40,6 +40,11 @@ export interface MatchMessage {
   scope: MatchScope | null
   resume_id: string | null
   steps: TraceStep[]
+  /**
+   * Jobs the turn recommended, parsed server-side from the answer's `:job[…]`
+   * markers. Kept as a record — the cards themselves render inline, so nothing
+   * in the UI reads this.
+   */
   job_ids: string[]
   created_at: string
 }

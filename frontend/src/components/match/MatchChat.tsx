@@ -4,8 +4,11 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChatMessageList } from "@/components/match/ChatMessageList"
 import { MatchComposer } from "@/components/match/MatchComposer"
+import { JobDetailPanel } from "@/components/jobs/JobDetailPanel"
 import { useMatchChat } from "@/hooks/useMatchChat"
 import { useConversationStore } from "@/store/useConversationStore"
+import { useFavoriteStore } from "@/store/useFavoriteStore"
+import { useJobDrawerStore } from "@/store/useJobDrawerStore"
 import { conversationHref } from "@/lib/matchRoutes"
 import type { MatchScope } from "@/types/match"
 
@@ -29,6 +32,14 @@ export function MatchChat({ conversationId }: MatchChatProps) {
   const create = useConversationStore((s) => s.create)
   const refresh = useConversationStore((s) => s.fetch)
 
+  const drawerJobId = useJobDrawerStore((s) => s.jobId)
+  const drawerOpen = useJobDrawerStore((s) => s.isOpen)
+  const closeDrawer = useJobDrawerStore((s) => s.close)
+
+  const favoriteIds = useFavoriteStore((s) => s.favoriteIds)
+  const toggleFavorite = useFavoriteStore((s) => s.toggle)
+  const fetchFavorites = useFavoriteStore((s) => s.fetchFavorites)
+
   const chat = useMatchChat()
   const { loadHistory, clear } = chat
 
@@ -39,6 +50,12 @@ export function MatchChat({ conversationId }: MatchChatProps) {
       clear()
     }
   }, [conversationId, loadHistory, clear])
+
+  // The drawer's favourite button needs to know the current state, and nothing
+  // else on this page loads it.
+  useEffect(() => {
+    fetchFavorites()
+  }, [fetchFavorites])
 
   const handleSend = async (content: string) => {
     let id = conversationId
@@ -72,7 +89,6 @@ export function MatchChat({ conversationId }: MatchChatProps) {
             messages={chat.messages}
             steps={chat.steps}
             finalAnswer={chat.finalAnswer}
-            jobIds={chat.jobIds}
             isStreaming={chat.isStreaming}
             error={chat.error}
           />
@@ -87,6 +103,16 @@ export function MatchChat({ conversationId }: MatchChatProps) {
         onSend={handleSend}
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
+      />
+
+      {/* Opened by the job cards embedded in an answer, which sit too deep in
+          the Markdown tree to receive a callback. */}
+      <JobDetailPanel
+        jobId={drawerJobId}
+        open={drawerOpen}
+        onClose={closeDrawer}
+        isFavorited={drawerJobId ? favoriteIds.has(drawerJobId) : false}
+        onToggleFavorite={toggleFavorite}
       />
     </div>
   )

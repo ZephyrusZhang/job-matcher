@@ -106,6 +106,22 @@ async def get_job_by_id(db: aiosqlite.Connection, job_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+async def filter_existing(db: aiosqlite.Connection, job_ids: list[str]) -> list[str]:
+    """Keep only the ids that exist, preserving the caller's order.
+
+    Used to clean job citations parsed out of an assistant answer before they
+    are stored, so a hallucinated id never becomes part of the record.
+    """
+    if not job_ids:
+        return []
+
+    placeholders = ",".join("?" * len(job_ids))
+    query = f"SELECT id FROM jobs WHERE id IN ({placeholders})"
+    async with db.execute(query, job_ids) as cursor:
+        found = {row["id"] for row in await cursor.fetchall()}
+    return [job_id for job_id in job_ids if job_id in found]
+
+
 async def search_jobs(
     db: aiosqlite.Connection,
     q: str,

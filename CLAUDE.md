@@ -102,6 +102,16 @@ Two things make it different from the crawler:
 
 Scope is **not** a tool argument — `app/agents/match_tools.py` pins it in a `ContextVar` per turn, so the model cannot search outside what the user selected. Tools return compressed job views (~60 tokens each) because a scope can hold ~1000 jobs; full text comes from `get_job_detail` on demand.
 
+### Embedded job cards
+
+The answer cites jobs with `:job[<uuid>]` markers, which the frontend replaces with cards. A marker alone in its own paragraph becomes a block card; one inside a sentence becomes an inline chip — the distinction exists because a block card is a `<div>` and would be illegal inside the `<p>` a paragraph renders as.
+
+`lib/remarkJobEmbed.ts` rewrites the markers in the **Markdown AST**, setting `data.hName` to `job-card` / `job-ref` / `job-card-group`; `mdast-util-to-hast` emits those tag names and `react-markdown` resolves them through its `components` map. Working on the AST (rather than string-replacing into raw HTML plus `rehype-raw`) means markers inside fenced or inline code are skipped for free, and no raw-HTML parsing is enabled on LLM output that carries crawled job descriptions. `types/jsx.d.ts` must declare each custom tag: without it `react-markdown`'s `Components` type silently accepts anything.
+
+`app/utils/job_citations.py` parses the same markers server-side — it *does* have to strip code spans itself — and the result, filtered through `job_model.filter_existing`, becomes `match_messages.job_ids`. That column means "jobs this answer recommended"; it is stored as a record but nothing renders it. `TurnContext.cited_job_ids` is a different thing: every job the agent *looked at*, which one `search_jobs` call can fill with 40 rows.
+
+Keep `JOB_RE` in `remarkJobEmbed.ts` and `_JOB_RE` in `job_citations.py` in sync. Both are pinned to the UUID shape, so a mis-transcribed id degrades to plain text instead of becoming a guaranteed 404.
+
 ### Streaming (SSE)
 
 `/api/compare/generate` and `/api/chat/message` return `StreamingResponse` with `X-Accel-Buffering: no`. The wire format is hand-rolled in `services/report_service.py` / `chat_service.py`:
@@ -116,7 +126,7 @@ event: chat_end                       data: {"message_id": ...}
 
 `/api/match/conversations/{id}/messages` uses a richer contract of its own —
 `message_start` / `narration` / `tool_start` / `tool_args` / `tool_end` /
-`final_delta` / `jobs` / `message_end` — parsed by `hooks/useMatchChat.ts`.
+`final_delta` / `message_end` — parsed by `hooks/useMatchChat.ts`.
 `hooks/useSSE.ts` still serves `/compare` and was deliberately left alone.
 
 `frontend/src/lib/sse.ts` parses this manually (POST + `ReadableStream`, not `EventSource`) and `hooks/useSSE.ts` maps the event names to state. Adding a new stream means touching both the emitter and that switch statement.

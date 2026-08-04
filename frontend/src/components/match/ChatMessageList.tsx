@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react"
 import { MarkdownRenderer } from "@/components/match/MarkdownRenderer"
-import { JobCitationCards } from "@/components/match/JobCitationCard"
 import { ThinkingTrace } from "@/components/match/ThinkingTrace"
 import { cn } from "@/lib/utils"
 import type { MatchMessage, TraceStep } from "@/types/match"
@@ -48,7 +47,6 @@ function UserBubble({ message }: { message: MatchMessage }) {
 interface AssistantTurnProps {
   steps: TraceStep[]
   finalAnswer: string
-  jobIds: string[]
   isStreaming?: boolean
 }
 
@@ -57,11 +55,12 @@ interface AssistantTurnProps {
  *
  * Narration is the model thinking out loud between tool calls, so it renders
  * muted; the `final_answer` payload is the deliverable and gets full markdown.
+ * Recommended jobs are cited inline via `:job[…]` markers inside that answer,
+ * so there is no separate list of them below the turn.
  */
 function AssistantTurn({
   steps,
   finalAnswer,
-  jobIds,
   isStreaming = false,
 }: AssistantTurnProps) {
   const hasAnything = steps.length > 0 || finalAnswer
@@ -76,8 +75,6 @@ function AssistantTurn({
         isStreaming &&
         !hasAnything && <p className="text-sm text-text-muted">正在思考…</p>
       )}
-
-      {!isStreaming && jobIds.length > 0 && <JobCitationCards jobIds={jobIds} />}
     </div>
   )
 }
@@ -86,7 +83,6 @@ interface ChatMessageListProps {
   messages: MatchMessage[]
   steps: TraceStep[]
   finalAnswer: string
-  jobIds: string[]
   isStreaming: boolean
   error: string | null
 }
@@ -95,7 +91,6 @@ export function ChatMessageList({
   messages,
   steps,
   finalAnswer,
-  jobIds,
   isStreaming,
   error,
 }: ChatMessageListProps) {
@@ -115,18 +110,12 @@ export function ChatMessageList({
             key={message.id}
             steps={message.steps}
             finalAnswer={message.final_answer ?? ""}
-            jobIds={message.job_ids}
           />
         ),
       )}
 
       {isStreaming && (
-        <AssistantTurn
-          steps={steps}
-          finalAnswer={finalAnswer}
-          jobIds={jobIds}
-          isStreaming
-        />
+        <AssistantTurn steps={steps} finalAnswer={finalAnswer} isStreaming />
       )}
 
       {error && (

@@ -14,13 +14,13 @@ import type {
  *
  * The stream carries three interleaved things — narration, a tool timeline,
  * and the final answer — so this cannot reuse `useSSE`, whose event switch is
- * fixed to the report contract used by /compare.
+ * fixed to the report contract used by /compare. Recommended jobs are not a
+ * separate channel: they are cited inline in the answer as `:job[…]` markers.
  */
 export function useMatchChat() {
   const [messages, setMessages] = useState<MatchMessage[]>([])
   const [finalAnswer, setFinalAnswer] = useState("")
   const [steps, setSteps] = useState<TraceStep[]>([])
-  const [jobIds, setJobIds] = useState<string[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,7 +29,6 @@ export function useMatchChat() {
   const resetTurn = useCallback(() => {
     setFinalAnswer("")
     setSteps([])
-    setJobIds([])
     setError(null)
   }, [])
 
@@ -140,10 +139,6 @@ export function useMatchChat() {
               setFinalAnswer((prev) => prev + (event.data?.content ?? ""))
               break
 
-            case "jobs":
-              setJobIds(event.data?.job_ids ?? [])
-              break
-
             case "error":
               setError(event.data?.message ?? "生成失败")
               break
@@ -173,7 +168,6 @@ export function useMatchChat() {
     messages,
     finalAnswer,
     steps,
-    jobIds,
     isStreaming,
     error,
     loadHistory,

@@ -11,6 +11,7 @@ from app.agents.match_tools import TurnContext, reset_turn_context, set_turn_con
 from app.agents.matcher import matcher_agent
 from app.core.logging import logger
 from app.exceptions import AppError
+from app.models import job as job_model
 from app.models import match_conversation as conv_model
 from app.models import resume as resume_model
 from app.schemas.agent import Message
@@ -20,6 +21,7 @@ from app.schemas.match import (
     MatchScope,
     SendMessageRequest,
 )
+from app.utils.job_citations import extract_job_ids
 
 # Guards against a wedged agent holding an SSE connection open forever.
 TURN_TIMEOUT_SECONDS = 300
@@ -180,8 +182,7 @@ class MatchService:
             # too would render the same text twice.
             steps.pop()
 
-        if turn_ctx.cited_job_ids:
-            yield _sse("jobs", {"job_ids": turn_ctx.cited_job_ids})
+        job_ids = await self._resolve_citations(db, final_answer, turn_ctx)
 
         await conv_model.add_message(
             db,
@@ -192,11 +193,39 @@ class MatchService:
             scope=request.scope.model_dump(),
             resume_id=resume_id,
             steps=steps,
-            job_ids=turn_ctx.cited_job_ids,
+            job_ids=job_ids,
             message_id=message_id,
         )
 
         yield _sse("message_end", {"message_id": message_id})
+
+    async def _resolve_citations(
+        self, db: aiosqlite.Connection, final_answer: str, turn_ctx: TurnContext
+    ) -> list[str]:
+        """Turn the answer's ``:job[...]`` markers into a stored job list.
+
+        The markers are what the turn actually recommended, unlike
+        ``TurnContext.cited_job_ids``, which holds everything the agent merely
+        looked at (one ``search_jobs`` call alone contributes up to 40 rows).
+        """
+        cited = extract_job_ids(final_answer)
+        if not cited:
+            return []
+
+        job_ids = await job_model.filter_existing(db, cited)
+
+        # Citing a job found in an earlier turn is legitimate — TurnContext is
+        # rebuilt per turn — so an unseen id is logged, never dropped. Only ids
+        # that do not exist at all are filtered out above.
+        unseen = [j for j in job_ids if j not in turn_ctx.cited_job_ids]
+        if unseen:
+            logger.info("match_citation_unseen", count=len(unseen), job_ids=unseen)
+        if len(job_ids) != len(cited):
+            logger.warning(
+                "match_citation_unknown",
+                job_ids=[j for j in cited if j not in job_ids],
+            )
+        return job_ids
 
     async def _run_agent(
         self, request: SendMessageRequest, session_id: str, bridge
