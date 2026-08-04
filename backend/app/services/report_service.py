@@ -7,7 +7,7 @@ import aiosqlite
 from app.exceptions import NoFavoritesError, ResumeNotFoundError
 from app.llm.client import LLMClient
 from app.llm.context import ContextManager
-from app.llm.prompts import compare, match
+from app.llm.prompts import compare
 from app.models import favorite as fav_model
 from app.models import report as report_model
 from app.models import resume as resume_model
@@ -26,9 +26,10 @@ class ReportService:
         preferences: Preferences,
         report_type: str,
     ) -> AsyncGenerator[str, None]:
-        """Generate a match or compare report via SSE streaming.
+        """Generate a comparison report via SSE streaming.
 
-        Yields SSE-formatted strings.
+        Yields:
+            SSE-formatted strings.
         """
         # Validate resume exists
         resume_data = await resume_model.get_resume(db)
@@ -49,15 +50,10 @@ class ReportService:
         jobs_str = self.context_manager.format_jobs_for_context(fav_jobs)
         job_ids = [j["id"] for j in fav_jobs]
 
-        # Build messages
-        if report_type == "match":
-            messages = match.build_messages(parsed_resume, prefs_str, jobs_str)
-            start_event = "report_start"
-            end_event = "report_end"
-        else:
-            messages = compare.build_messages(parsed_resume, prefs_str, jobs_str)
-            start_event = "compare_start"
-            end_event = "compare_end"
+        # Only /compare uses this path now — /match is a conversational agent.
+        messages = compare.build_messages(parsed_resume, prefs_str, jobs_str)
+        start_event = "compare_start"
+        end_event = "compare_end"
 
         report_id = str(uuid.uuid4())
         full_content = []
