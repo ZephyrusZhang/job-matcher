@@ -1,4 +1,8 @@
-"""Crawl pipeline: runs AgentRunner, normalizes output, and stores into DB."""
+"""Crawl pipeline: normalizes crawler output and stores it into the database.
+
+Running the agent itself lives in ``app/agents/crawler.py``; this module owns
+normalization, deduplication and the cached-script fast path.
+"""
 import asyncio
 import hashlib
 import json
@@ -155,37 +159,6 @@ async def store_jobs(
 
     await db.commit()
     return jobs_found, jobs_new, jobs_updated
-
-
-def run_crawler(
-    career_url: str,
-    cancel_event: threading.Event | None = None,
-) -> tuple[list[dict], str | None]:
-    """Run the AgentRunner synchronously. Call from a thread.
-
-    Returns (jobs, crawler_code) — crawler_code is the generated script if available.
-    """
-    from .agent import AgentRunner
-    from .handlers import ConsoleHandler, FileHandler
-    from .tools import sandbox_mgr
-
-    runner = AgentRunner(
-        handlers=[
-            ConsoleHandler(verbose=True),
-            FileHandler(log_dir="logs"),
-        ],
-        cancel_event=cancel_event,
-    )
-    jobs = runner.run(f"爬取该招聘网站的所有岗位信息：{career_url}")
-
-    # Try to extract the generated crawler code for caching
-    crawler_code = None
-    try:
-        crawler_code = sandbox_mgr.read_file("/home/user/crawler.py")
-    except Exception:
-        pass
-
-    return jobs if jobs else [], crawler_code
 
 
 def run_cached_crawler(

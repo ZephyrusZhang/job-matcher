@@ -3,12 +3,12 @@ import logging
 import math
 import threading
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 
 import aiosqlite
 
+from app.agents.crawler import crawler_agent
 from app.config import AppConfig
-from app.crawl.pipeline import run_cached_crawler, run_crawler, store_jobs
+from app.crawl.pipeline import run_cached_crawler, store_jobs
 from app.database import get_db
 from app.exceptions import AppError, CompanyNotFoundError, CrawlInProgressError
 from app.models import crawl_task as task_model
@@ -19,8 +19,12 @@ from app.services.company_service import CompanyService
 
 logger = logging.getLogger(__name__)
 
-# Thread pool for running the blocking AgentRunner
-_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="crawl")
+# The crawl agent runs on the main event loop rather than in a worker thread:
+# the LangGraph Postgres checkpointer pool is bound to the loop that opened it,
+# and the agent's blocking tools hop to threads individually. This semaphore
+# preserves the previous two-concurrent-crawls limit.
+_MAX_CONCURRENT_CRAWLS = 2
+_crawl_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CRAWLS)
 
 
 class CrawlService:
@@ -28,6 +32,8 @@ class CrawlService:
         self.company_service = company_service
         self.config = config
         self._cancel_events: dict[str, threading.Event] = {}
+        # Hold strong references so in-flight crawls are not garbage collected.
+        self._tasks: set[asyncio.Task] = set()
 
     async def trigger(
         self, db: aiosqlite.Connection, company_id: str
@@ -56,16 +62,19 @@ class CrawlService:
         cancel_event = threading.Event()
         self._cancel_events[task_id] = cancel_event
 
-        asyncio.get_event_loop().run_in_executor(
-            _executor,
-            self._run_crawl_sync,
-            task_id,
-            company_id,
-            career_url,
-            self.config.database.path,
-            cancel_event,
-            cached_code,
+        task = asyncio.create_task(
+            self._run_crawl(
+                task_id,
+                company_id,
+                career_url,
+                self.config.database.path,
+                cancel_event,
+                cached_code,
+            )
         )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(lambda _: self._cancel_events.pop(task_id, None))
 
         task = await task_model.get_task_by_id(db, task_id)
         return self._task_to_out(task)
@@ -90,22 +99,6 @@ class CrawlService:
         task = await task_model.get_task_by_id(db, task_id)
         return self._task_to_out(task)
 
-    def _run_crawl_sync(
-        self,
-        task_id: str,
-        company_id: str,
-        career_url: str,
-        db_path: str,
-        cancel_event: threading.Event,
-        cached_code: str | None,
-    ) -> None:
-        try:
-            asyncio.run(
-                self._run_crawl(task_id, company_id, career_url, db_path, cancel_event, cached_code)
-            )
-        finally:
-            self._cancel_events.pop(task_id, None)
-
     async def _run_crawl(
         self,
         task_id: str,
@@ -122,7 +115,7 @@ class CrawlService:
 
             await task_model.update_task_status(db, task_id, "running")
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             raw_jobs: list[dict] = []
             new_code: str | None = None
 
@@ -143,11 +136,18 @@ class CrawlService:
                 logger.info(f"[crawl] No cached code for company={company_id}")
 
             if not cache_hit and not cancel_event.is_set():
-                # No cached code, or cached code failed → run full agent
+                # No cached code, or cached code failed → run the full agent.
+                # task_id doubles as the LangGraph thread_id, so a crawl's
+                # conversation is checkpointed and inspectable per task.
                 logger.info(f"Running agent crawler for company={company_id}")
-                raw_jobs, new_code = await loop.run_in_executor(
-                    None, run_crawler, career_url, cancel_event
-                )
+                async with _crawl_semaphore:
+                    if cancel_event.is_set():
+                        return
+                    raw_jobs, new_code = await crawler_agent.crawl(
+                        career_url,
+                        session_id=task_id,
+                        cancel_event=cancel_event,
+                    )
 
                 # Cache the generated code on success
                 if new_code and raw_jobs and not cancel_event.is_set():
