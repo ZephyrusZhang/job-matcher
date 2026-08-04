@@ -61,6 +61,8 @@ Services are module-level singletons created once in `dependencies.py::init_serv
 
 Tables are created by `_CREATE_TABLES_SQL` in `app/database.py` — there is no migration framework, so schema changes mean editing that DDL plus a hand-written script in `backend/scripts/`. Several columns hold JSON-encoded text: `jobs.location` is a JSON array (filtering uses `LIKE '%"城市"%'`), `requirements_must`/`requirements_nice` are JSON arrays, `reports.job_ids`/`preferences` are JSON. `reports` has `UNIQUE(company_id, report_type)`, so a regenerated report replaces the old one.
 
+`resumes` replaced the old singleton `resume` table (migration: `scripts/migrate_multi_resume.py`); exactly one row carries `is_default`, which is what `GET /api/resume` returns for `/compare`.
+
 Categories, job types, and locations are stored in **Chinese** (`前端`, `实习`, `北京`), not the English names shown in the README.
 
 ### Agent framework (`app/core/`, `app/agents/`)
@@ -89,17 +91,33 @@ This is the most involved subsystem. It is a ReAct loop that *writes a crawler*,
 
 The legacy console + JSONL event stream is preserved: `app/crawl/callbacks.py::CrawlEventBridge` translates LangChain callbacks back into the original `AgentEvent` objects, so `ConsoleHandler` output and `logs/agent_<ts>.jsonl` keep their exact schema. `CrawlerAgent.compact_history` overrides the framework's default token-based trimming because dropping a message would orphan its tool results — it compresses old tool payloads in place instead, matching the original `maybe_compress_history`.
 
+### Match agent (`app/agents/matcher.py`)
+
+`/match` is a chat page, not a report generator. `MatchAgent` recommends jobs from a scope the user picks in the composer (companies, multi-select, or favourites).
+
+Two things make it different from the crawler:
+
+- **`final_answer` is a terminal tool.** `BaseAgent.terminal_tools` routes to `END` when one is called, so the turn has an explicit exit. This separates the deliverable (`final_answer`'s payload, rendered as the message body) from narration (plain assistant text between tool calls, rendered muted). If the model answers in plain text instead, the service falls back to treating that as the answer; if it calls `final_answer` alongside other tools, the tool node defers it and answers the call with a "skipped" `ToolMessage` — a `tool_call` without a matching `ToolMessage` makes the next request fail.
+- **`BaseAgent.streaming = True`.** `LLMService.call()` uses `ainvoke`, which issues a *non-streaming* request unless the model is built with `streaming=True`, and without it `on_llm_new_token` never fires. Since the final answer arrives as the `answer` argument of a tool call, `services/match_stream.py::FinalAnswerExtractor` decodes that partial JSON string incrementally (escapes and `\uXXXX` can straddle chunks). `MatchStreamBridge` pushes narration/tool/answer events onto an `asyncio.Queue` the SSE generator drains.
+
+Scope is **not** a tool argument — `app/agents/match_tools.py` pins it in a `ContextVar` per turn, so the model cannot search outside what the user selected. Tools return compressed job views (~60 tokens each) because a scope can hold ~1000 jobs; full text comes from `get_job_detail` on demand.
+
 ### Streaming (SSE)
 
-`/api/match/generate`, `/api/compare/generate`, and `/api/chat/message` return `StreamingResponse` with `X-Accel-Buffering: no`. The wire format is hand-rolled in `services/report_service.py` / `chat_service.py`:
+`/api/compare/generate` and `/api/chat/message` return `StreamingResponse` with `X-Accel-Buffering: no`. The wire format is hand-rolled in `services/report_service.py` / `chat_service.py`:
 
 ```
-event: report_start | compare_start   data: {"report_id": ...}
+event: compare_start                  data: {"report_id": ...}
 event: chat_start                     data: {"message_id": ...}     # note the different key
 event: chunk                          data: {"content": "..."}
-event: report_end | compare_end       data: {"report_id": ..., "job_ids": [...]}
+event: compare_end                    data: {"report_id": ..., "job_ids": [...]}
 event: chat_end                       data: {"message_id": ...}
 ```
+
+`/api/match/conversations/{id}/messages` uses a richer contract of its own —
+`message_start` / `narration` / `tool_start` / `tool_args` / `tool_end` /
+`final_delta` / `jobs` / `message_end` — parsed by `hooks/useMatchChat.ts`.
+`hooks/useSSE.ts` still serves `/compare` and was deliberately left alone.
 
 `frontend/src/lib/sse.ts` parses this manually (POST + `ReadableStream`, not `EventSource`) and `hooks/useSSE.ts` maps the event names to state. Adding a new stream means touching both the emitter and that switch statement.
 
