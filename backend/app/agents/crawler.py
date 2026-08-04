@@ -167,17 +167,26 @@ class CrawlerAgent(BaseAgent):
             logger.exception("crawl_agent_failed", session_id=session_id, url=career_url, error=str(e))
         finally:
             bridge.finish(cancelled=cancelled)
-            # Free the Playwright browser; the sandbox container is deliberately
-            # left running so a failed crawl can be inspected.
             try:
                 browser_mgr.close()
             except Exception:
                 logger.warning("browser_close_failed", session_id=session_id)
 
+        # The sandbox must outlive the agent loop long enough to read its
+        # output, so it is cleaned up here rather than in the finally above.
         if cancelled:
+            sandbox_mgr.cleanup(success=True)
             return [], None
 
-        return self.read_output(), self.read_crawler_code()
+        jobs = self.read_output()
+        code = self.read_crawler_code()
+
+        # No jobs means the crawl failed; cleanup() then keeps the container so
+        # the generated script and partial output stay inspectable.
+        sandbox_mgr.cleanup(success=bool(jobs))
+        logger.info("crawl_sandbox_released", session_id=session_id, jobs=len(jobs), kept=not bool(jobs))
+
+        return jobs, code
 
 
 crawler_agent = CrawlerAgent()

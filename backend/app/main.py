@@ -54,6 +54,15 @@ async def lifespan(app: FastAPI):
     await init_database(config.database)
     await init_services(config, config.database.path)
 
+    # Reclaim sandbox containers orphaned by a previous crash or force-kill.
+    # Safe here: this process owns none yet.
+    try:
+        from app.crawl.sandbox import SandboxManager
+
+        SandboxManager.reap_stale()
+    except Exception as e:
+        struct_logger.warning("sandbox_reap_failed", error=str(e))
+
     # ── Agent framework ──
     # Every step degrades gracefully: the business API must keep serving even
     # when the agent Postgres store is unreachable.

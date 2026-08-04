@@ -174,24 +174,26 @@ def run_cached_crawler(
     if cancel_event and cancel_event.is_set():
         return []
 
-    # Use a fresh sandbox to avoid stale container references
-    sandbox = SandboxManager()
-    sandbox.ensure_sandbox()
-    sandbox.write_file("/home/user/crawler.py", code)
-    result = sandbox.run_command("python /home/user/crawler.py", timeout=300)
+    # A fresh sandbox avoids stale container references; the context manager
+    # removes it on the way out, keeping it only when the run raised and
+    # KEEP_SANDBOX_ON_FAILURE is set.
+    with SandboxManager() as sandbox:
+        sandbox.ensure_sandbox()
+        sandbox.write_file("/home/user/crawler.py", code)
+        result = sandbox.run_command("python /home/user/crawler.py", timeout=300)
 
-    if result["exit_code"] != 0:
-        stderr = result.get("stderr", "")
-        raise RuntimeError(f"Cached crawler failed (exit {result['exit_code']}): {stderr[-500:]}")
+        if result["exit_code"] != 0:
+            stderr = result.get("stderr", "")
+            raise RuntimeError(f"Cached crawler failed (exit {result['exit_code']}): {stderr[-500:]}")
 
-    # Read output
-    try:
-        content = sandbox.read_file("/home/user/output.json")
-        data = json.loads(content)
-        if isinstance(data, dict) and "jobs" in data:
-            return data["jobs"]
-        if isinstance(data, list):
-            return data
-        return []
-    except Exception as e:
-        raise RuntimeError(f"Failed to read crawler output: {e}")
+        try:
+            content = sandbox.read_file("/home/user/output.json")
+            data = json.loads(content)
+        except Exception as e:
+            raise RuntimeError(f"Failed to read crawler output: {e}")
+
+    if isinstance(data, dict) and "jobs" in data:
+        return data["jobs"]
+    if isinstance(data, list):
+        return data
+    return []
