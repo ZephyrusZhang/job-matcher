@@ -1,4 +1,26 @@
 services:
+  # --- Agent framework store (LangGraph checkpoints + mem0 vectors + auth tables) ---
+  # Business data (jobs/favorites/reports) stays in SQLite; this database only
+  # backs the agent framework ported from the fastapi-langgraph-agent template.
+  agent-db:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-job_matcher_agent}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    ports:
+      # Host port is configurable — 5432 is often already taken by a local
+      # Postgres. The backend container always reaches it on 5432 internally.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - agent-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-job_matcher_agent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # --- Backend API ---
   backend:
     build:
@@ -16,6 +38,21 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com}
       - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
       - SANDBOX_IMAGE=${SANDBOX_IMAGE:-crawler-sandbox}
+      # Agent framework
+      - APP_ENV=${APP_ENV:-development}
+      - POSTGRES_HOST=agent-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-job_matcher_agent}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-changeme-in-production}
+      - LANGFUSE_TRACING_ENABLED=${LANGFUSE_TRACING_ENABLED:-false}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
+    depends_on:
+      agent-db:
+        condition: service_healthy
     restart: unless-stopped
 
   # --- Frontend ---
@@ -47,3 +84,4 @@ services:
 
 volumes:
   backend-data:
+  agent-db-data:
