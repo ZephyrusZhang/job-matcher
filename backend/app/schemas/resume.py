@@ -13,14 +13,19 @@ class ClearResult(BaseModel):
     messages_deleted: int = 0
 
 
-class ResumeUploadOut(BaseModel):
-    filename: str
-    parsed: ParsedResume
-    uploaded_at: str
-    cleared: ClearResult
-
-
 class ResumeOut(BaseModel):
+    id: str
+    label: str
     filename: str
     parsed: ParsedResume
+    is_default: bool = False
     uploaded_at: str
+
+
+class ResumeUploadOut(ResumeOut):
+    cleared: ClearResult = ClearResult()
+
+
+class ResumeUpdate(BaseModel):
+    label: str | None = None
+    is_default: bool | None = None

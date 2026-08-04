@@ -51,13 +51,17 @@ CREATE TABLE IF NOT EXISTS favorites (
     PRIMARY KEY (job_id)
 );
 
-CREATE TABLE IF NOT EXISTS resume (
-    id          INTEGER PRIMARY KEY CHECK (id = 1),
+CREATE TABLE IF NOT EXISTS resumes (
+    id          TEXT PRIMARY KEY,
     filename    TEXT NOT NULL,
     file_path   TEXT NOT NULL,
     parsed_data TEXT NOT NULL,
+    label       TEXT NOT NULL DEFAULT '',
+    is_default  INTEGER NOT NULL DEFAULT 0,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_resumes_default ON resumes(is_default DESC, uploaded_at DESC);
 
 CREATE TABLE IF NOT EXISTS reports (
     id          TEXT PRIMARY KEY,
@@ -101,6 +105,32 @@ CREATE TABLE IF NOT EXISTS crawler_scripts (
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Conversational job matching. Separate from chat_messages, which is bound to
+-- reports(id) and serves the report follow-up feature.
+CREATE TABLE IF NOT EXISTS match_conversations (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_conv_updated ON match_conversations(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS match_messages (
+    id              TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES match_conversations(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL,
+    content         TEXT NOT NULL DEFAULT '',
+    final_answer    TEXT,
+    scope           TEXT,
+    resume_id       TEXT,
+    tool_events     TEXT,
+    job_ids         TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_msg_conv ON match_messages(conversation_id, created_at);
 
 CREATE TABLE IF NOT EXISTS settings (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
