@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS match_messages (
     final_answer    TEXT,
     scope           TEXT,
     resume_id       TEXT,
-    tool_events     TEXT,
+    steps           TEXT,
     job_ids         TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -3,9 +3,9 @@
 import { useEffect, useRef } from "react"
 import { MarkdownRenderer } from "@/components/match/MarkdownRenderer"
 import { JobCitationCards } from "@/components/match/JobCitationCard"
-import { ToolTimeline } from "@/components/match/ToolTimeline"
+import { ThinkingTrace } from "@/components/match/ThinkingTrace"
 import { cn } from "@/lib/utils"
-import type { MatchMessage, ToolEvent } from "@/types/match"
+import type { MatchMessage, TraceStep } from "@/types/match"
 
 function ScopeChips({ message }: { message: MatchMessage }) {
   const scope = message.scope
@@ -46,8 +46,7 @@ function UserBubble({ message }: { message: MatchMessage }) {
 }
 
 interface AssistantTurnProps {
-  narration: string
-  toolEvents: ToolEvent[]
+  steps: TraceStep[]
   finalAnswer: string
   jobIds: string[]
   isStreaming?: boolean
@@ -60,23 +59,16 @@ interface AssistantTurnProps {
  * muted; the `final_answer` payload is the deliverable and gets full markdown.
  */
 function AssistantTurn({
-  narration,
-  toolEvents,
+  steps,
   finalAnswer,
   jobIds,
   isStreaming = false,
 }: AssistantTurnProps) {
-  const hasAnything = narration || toolEvents.length > 0 || finalAnswer
+  const hasAnything = steps.length > 0 || finalAnswer
 
   return (
     <div>
-      {narration && (
-        <p className="mb-2 whitespace-pre-wrap text-xs leading-relaxed text-text-muted">
-          {narration}
-        </p>
-      )}
-
-      <ToolTimeline events={toolEvents} />
+      <ThinkingTrace steps={steps} isStreaming={isStreaming} />
 
       {finalAnswer ? (
         <MarkdownRenderer content={finalAnswer} isStreaming={isStreaming} />
@@ -92,8 +84,7 @@ function AssistantTurn({
 
 interface ChatMessageListProps {
   messages: MatchMessage[]
-  narration: string
-  toolEvents: ToolEvent[]
+  steps: TraceStep[]
   finalAnswer: string
   jobIds: string[]
   isStreaming: boolean
@@ -102,8 +93,7 @@ interface ChatMessageListProps {
 
 export function ChatMessageList({
   messages,
-  narration,
-  toolEvents,
+  steps,
   finalAnswer,
   jobIds,
   isStreaming,
@@ -113,7 +103,7 @@ export function ChatMessageList({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [messages.length, finalAnswer, toolEvents.length, narration])
+  }, [messages.length, finalAnswer, steps])
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6">
@@ -123,8 +113,7 @@ export function ChatMessageList({
         ) : (
           <AssistantTurn
             key={message.id}
-            narration={message.content}
-            toolEvents={message.tool_events}
+            steps={message.steps}
             finalAnswer={message.final_answer ?? ""}
             jobIds={message.job_ids}
           />
@@ -133,8 +122,7 @@ export function ChatMessageList({
 
       {isStreaming && (
         <AssistantTurn
-          narration={narration}
-          toolEvents={toolEvents}
+          steps={steps}
           finalAnswer={finalAnswer}
           jobIds={jobIds}
           isStreaming

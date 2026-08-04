@@ -170,9 +170,15 @@ class MatchService:
             reset_turn_context(token)
 
         # The model is instructed to finish via final_answer; if it answered in
-        # plain text instead, use that rather than showing the user nothing.
+        # plain text instead, promote that rather than showing the user nothing.
+        steps = list(bridge.steps)
+        used_fallback = not bridge.final_answer
         final_answer = bridge.final_answer or bridge.narration
-        narration = bridge.narration if bridge.final_answer else ""
+
+        if used_fallback and steps and steps[-1]["type"] == "narration":
+            # That trailing narration *is* the answer — leaving it in the trace
+            # too would render the same text twice.
+            steps.pop()
 
         if turn_ctx.cited_job_ids:
             yield _sse("jobs", {"job_ids": turn_ctx.cited_job_ids})
@@ -181,11 +187,11 @@ class MatchService:
             db,
             session_id,
             role="assistant",
-            content=narration,
+            content="",
             final_answer=final_answer,
             scope=request.scope.model_dump(),
             resume_id=resume_id,
-            tool_events=bridge.tool_events,
+            steps=steps,
             job_ids=turn_ctx.cited_job_ids,
             message_id=message_id,
         )

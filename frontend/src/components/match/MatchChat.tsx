@@ -70,8 +70,7 @@ export function MatchChat({ conversationId }: MatchChatProps) {
         ) : (
           <ChatMessageList
             messages={chat.messages}
-            narration={chat.narration}
-            toolEvents={chat.toolEvents}
+            steps={chat.steps}
             finalAnswer={chat.finalAnswer}
             jobIds={chat.jobIds}
             isStreaming={chat.isStreaming}

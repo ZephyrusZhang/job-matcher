@@ -5,13 +5,24 @@ export interface MatchScope {
   company_ids: string[]
 }
 
-export interface ToolEvent {
-  call_id: string
-  name: string
-  label: string
+/**
+ * One entry in an assistant turn's reasoning trace.
+ *
+ * `narration` steps are the model thinking out loud; `tool` steps carry the
+ * call, its arguments, and the observation the model read back. They are kept
+ * in one ordered array because the agent interleaves them.
+ */
+export interface TraceStep {
+  type: "narration" | "tool"
+  index: number
+  content?: string
+  call_id?: string | null
+  name?: string | null
+  label?: string
   args?: Record<string, unknown> | string | null
-  ok: boolean
-  summary: string
+  ok?: boolean
+  summary?: string
+  observation?: string
   count?: number | null
   duration_ms?: number | null
   /** Set while the tool is still running; never persisted. */
@@ -28,7 +39,7 @@ export interface MatchMessage {
   final_answer: string | null
   scope: MatchScope | null
   resume_id: string | null
-  tool_events: ToolEvent[]
+  steps: TraceStep[]
   job_ids: string[]
   created_at: string
 }

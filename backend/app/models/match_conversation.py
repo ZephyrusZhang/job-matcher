@@ -38,7 +38,7 @@ def _message_to_dict(row: aiosqlite.Row) -> dict:
     """Decode a message row."""
     data = dict(row)
     data["scope"] = _loads(data.get("scope"), None)
-    data["tool_events"] = _loads(data.get("tool_events"), [])
+    data["steps"] = _loads(data.get("steps"), [])
     data["job_ids"] = _loads(data.get("job_ids"), [])
     return data
 
@@ -130,7 +130,7 @@ async def add_message(
     final_answer: str | None = None,
     scope: dict | None = None,
     resume_id: str | None = None,
-    tool_events: list | None = None,
+    steps: list | None = None,
     job_ids: list | None = None,
     message_id: str | None = None,
 ) -> dict:
@@ -145,7 +145,7 @@ async def add_message(
         final_answer: The ``final_answer`` tool payload, rendered as the body.
         scope: Company/favourite selection frozen at send time.
         resume_id: Resume used for this turn.
-        tool_events: The turn's tool timeline.
+        steps: The turn's ordered reasoning trace.
         job_ids: Jobs cited by this turn.
         message_id: Pre-allocated id, so streaming can announce it up front.
 
@@ -157,7 +157,7 @@ async def add_message(
         """
         INSERT INTO match_messages
             (id, session_id, role, content, final_answer, scope, resume_id,
-             tool_events, job_ids)
+             steps, job_ids)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -168,7 +168,7 @@ async def add_message(
             final_answer,
             _dumps(scope),
             resume_id,
-            _dumps(tool_events),
+            _dumps(steps),
             _dumps(job_ids),
         ),
     )

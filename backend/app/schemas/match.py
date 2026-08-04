@@ -24,15 +24,23 @@ class MatchScope(BaseModel):
         return "未指定范围"
 
 
-class ToolEvent(BaseModel):
-    """One tool invocation in an assistant turn's timeline."""
+class TraceStep(BaseModel):
+    """One entry in an assistant turn's reasoning trace.
 
-    call_id: str
-    name: str
+    ``narration`` steps hold the model's intermediate prose; ``tool`` steps hold
+    the call, its arguments, and the observation the model read back.
+    """
+
+    type: Literal["narration", "tool"] = "tool"
+    index: int = 0
+    content: str = ""
+    call_id: str | None = None
+    name: str | None = None
     label: str = ""
     args: dict | str | None = None
     ok: bool = True
     summary: str = ""
+    observation: str = ""
     count: int | None = None
     duration_ms: float | None = None
 
@@ -47,7 +55,7 @@ class MatchMessageOut(BaseModel):
     final_answer: str | None = None
     scope: MatchScope | None = None
     resume_id: str | None = None
-    tool_events: list[ToolEvent] = Field(default_factory=list)
+    steps: list[TraceStep] = Field(default_factory=list)
     job_ids: list[str] = Field(default_factory=list)
     created_at: str
 

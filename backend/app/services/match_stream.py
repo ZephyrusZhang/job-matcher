@@ -173,10 +173,13 @@ class MatchStreamBridge(AsyncCallbackHandler):
         self.queue = queue
         self.narration = ""
         self.final_answer = ""
-        self.tool_events: list[dict] = []
+        # Ordered reasoning trace: narration and tool steps interleaved exactly
+        # as they happened, which is what the UI replays.
+        self.steps: list[dict] = []
 
         self._extractor = FinalAnswerExtractor()
-        self._tool_runs: dict[UUID, dict] = {}
+        self._tool_runs: dict[UUID, int] = {}
+        self._tool_started: dict[UUID, float] = {}
         # Tool-call arguments arrive as deltas keyed by index within one
         # assistant message, not by call id.
         self._arg_index_names: dict[int, str] = {}
@@ -184,6 +187,13 @@ class MatchStreamBridge(AsyncCallbackHandler):
     def _emit(self, event: str, data: dict) -> None:
         """Queue one event for the SSE generator."""
         self.queue.put_nowait({"event": event, "data": data})
+
+    def _append_narration(self, text: str) -> None:
+        """Grow the trailing narration step, opening one when needed."""
+        if not self.steps or self.steps[-1]["type"] != "narration":
+            self.steps.append({"type": "narration", "index": len(self.steps), "content": ""})
+        self.steps[-1]["content"] += text
+        self._emit("narration", {"index": self.steps[-1]["index"], "content": text})
 
     async def on_chat_model_start(
         self, serialized: dict[str, Any], messages: list[list[BaseMessage]], **kwargs: Any
@@ -221,7 +231,7 @@ class MatchStreamBridge(AsyncCallbackHandler):
 
         if token:
             self.narration += token
-            self._emit("narration", {"content": token})
+            self._append_narration(token)
 
     async def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Fall back to the whole argument blob when nothing streamed.
@@ -258,40 +268,52 @@ class MatchStreamBridge(AsyncCallbackHandler):
 
         call_id = str(run_id)
         entry = {
+            "type": "tool",
+            "index": len(self.steps),
             "call_id": call_id,
             "name": name,
             "label": TOOL_LABELS.get(name, name),
             "args": inputs if inputs is not None else input_str,
             "ok": True,
             "summary": "",
+            "observation": "",
             "count": None,
             "duration_ms": None,
         }
-        self._tool_runs[run_id] = {"entry": entry, "started": time.time()}
-        self.tool_events.append(entry)
-        self._emit("tool_start", {k: entry[k] for k in ("call_id", "name", "label", "args")})
+        self._tool_runs[run_id] = len(self.steps)
+        self._tool_started[run_id] = time.time()
+        self.steps.append(entry)
+        self._emit(
+            "tool_start",
+            {k: entry[k] for k in ("index", "call_id", "name", "label", "args")},
+        )
 
     async def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any) -> None:
         """Close a timeline entry with a short result summary."""
-        run = self._tool_runs.pop(run_id, None)
-        if run is None:
+        idx = self._tool_runs.pop(run_id, None)
+        if idx is None:
             return
 
-        entry = run["entry"]
+        entry = self.steps[idx]
         content = str(getattr(output, "content", output))
         count = _extract_count(content)
 
         entry["ok"] = True
         entry["count"] = count
         entry["summary"] = f"{count} 条" if count is not None else "完成"
-        entry["duration_ms"] = (time.time() - run["started"]) * 1000
+        # The raw observation is what the model actually read, so the trace
+        # shows it verbatim (truncated) rather than just a result count.
+        entry["observation"] = _truncate(content)
+        entry["duration_ms"] = (time.time() - self._tool_started.pop(run_id, time.time())) * 1000
 
         self._emit(
             "tool_end",
             {
+                "index": entry["index"],
                 "call_id": entry["call_id"],
                 "ok": True,
                 "summary": entry["summary"],
+                "observation": entry["observation"],
                 "count": count,
                 "duration_ms": entry["duration_ms"],
             },
@@ -299,25 +321,40 @@ class MatchStreamBridge(AsyncCallbackHandler):
 
     async def on_tool_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
         """Mark a timeline entry as failed."""
-        run = self._tool_runs.pop(run_id, None)
-        if run is None:
+        idx = self._tool_runs.pop(run_id, None)
+        if idx is None:
             return
 
-        entry = run["entry"]
+        entry = self.steps[idx]
         entry["ok"] = False
         entry["summary"] = str(error)[:200]
-        entry["duration_ms"] = (time.time() - run["started"]) * 1000
+        entry["observation"] = str(error)[:2000]
+        entry["duration_ms"] = (time.time() - self._tool_started.pop(run_id, time.time())) * 1000
 
         logger.warning("match_tool_failed", tool=entry["name"], error=str(error))
         self._emit(
             "tool_end",
             {
+                "index": entry["index"],
                 "call_id": entry["call_id"],
                 "ok": False,
                 "summary": entry["summary"],
+                "observation": entry["observation"],
                 "duration_ms": entry["duration_ms"],
             },
         )
+
+
+# Observations can be large (a search returns dozens of jobs); keep enough to
+# be useful in the trace without bloating stored messages.
+MAX_OBSERVATION_CHARS = 4000
+
+
+def _truncate(text: str, limit: int = MAX_OBSERVATION_CHARS) -> str:
+    """Shorten an observation for display and storage."""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"\n\n… 已截断，共 {len(text)} 字符"
 
 
 def _extract_count(payload: str) -> Optional[int]:

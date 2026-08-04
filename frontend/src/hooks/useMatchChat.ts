@@ -6,7 +6,7 @@ import { listMessages, sendMessageUrl } from "@/lib/api/match"
 import type {
   MatchMessage,
   SendMessagePayload,
-  ToolEvent,
+  TraceStep,
 } from "@/types/match"
 
 /**
@@ -18,9 +18,8 @@ import type {
  */
 export function useMatchChat() {
   const [messages, setMessages] = useState<MatchMessage[]>([])
-  const [narration, setNarration] = useState("")
   const [finalAnswer, setFinalAnswer] = useState("")
-  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([])
+  const [steps, setSteps] = useState<TraceStep[]>([])
   const [jobIds, setJobIds] = useState<string[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -28,9 +27,8 @@ export function useMatchChat() {
   const abortRef = useRef(false)
 
   const resetTurn = useCallback(() => {
-    setNarration("")
     setFinalAnswer("")
-    setToolEvents([])
+    setSteps([])
     setJobIds([])
     setError(null)
   }, [])
@@ -65,7 +63,7 @@ export function useMatchChat() {
         final_answer: null,
         scope: payload.scope,
         resume_id: payload.resume_id ?? null,
-        tool_events: [],
+        steps: [],
         job_ids: [],
         created_at: new Date().toISOString(),
       }
@@ -79,23 +77,40 @@ export function useMatchChat() {
           if (abortRef.current) break
 
           switch (event.event) {
-            case "narration":
-              setNarration((prev) => prev + (event.data?.content ?? ""))
+            case "narration": {
+              // Narration arrives token by token into a numbered slot so it
+              // stays in order relative to the tool calls around it.
+              const { index, content } = event.data
+              setSteps((prev) => {
+                const next = [...prev]
+                const at = next.findIndex((s) => s.index === index)
+                if (at >= 0) {
+                  next[at] = { ...next[at], content: (next[at].content ?? "") + content }
+                } else {
+                  next.push({ type: "narration", index, content })
+                }
+                return next.sort((a, b) => a.index - b.index)
+              })
               break
+            }
 
             case "tool_start":
-              setToolEvents((prev) => [
-                ...prev,
-                {
-                  call_id: event.data.call_id,
-                  name: event.data.name,
-                  label: event.data.label,
-                  args: event.data.args,
-                  ok: true,
-                  summary: "",
-                  pending: true,
-                },
-              ])
+              setSteps((prev) =>
+                [
+                  ...prev,
+                  {
+                    type: "tool" as const,
+                    index: event.data.index,
+                    call_id: event.data.call_id,
+                    name: event.data.name,
+                    label: event.data.label,
+                    args: event.data.args,
+                    ok: true,
+                    summary: "",
+                    pending: true,
+                  },
+                ].sort((a, b) => a.index - b.index),
+              )
               break
 
             case "tool_args":
@@ -104,7 +119,7 @@ export function useMatchChat() {
               break
 
             case "tool_end":
-              setToolEvents((prev) =>
+              setSteps((prev) =>
                 prev.map((t) =>
                   t.call_id === event.data.call_id
                     ? {
@@ -112,6 +127,7 @@ export function useMatchChat() {
                         pending: false,
                         ok: event.data.ok ?? true,
                         summary: event.data.summary ?? "",
+                        observation: event.data.observation ?? "",
                         count: event.data.count ?? null,
                         duration_ms: event.data.duration_ms ?? null,
                       }
@@ -155,9 +171,8 @@ export function useMatchChat() {
 
   return {
     messages,
-    narration,
     finalAnswer,
-    toolEvents,
+    steps,
     jobIds,
     isStreaming,
     error,
