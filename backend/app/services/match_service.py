@@ -57,60 +57,60 @@ class MatchService:
         return [ConversationOut(**row) for row in await conv_model.list_conversations(db)]
 
     async def rename_conversation(
-        self, db: aiosqlite.Connection, conversation_id: str, title: str
+        self, db: aiosqlite.Connection, session_id: str, title: str
     ) -> ConversationOut:
         """Rename a conversation.
 
         Raises:
             ConversationNotFoundError: When it does not exist.
         """
-        if not await conv_model.rename_conversation(db, conversation_id, title):
+        if not await conv_model.rename_conversation(db, session_id, title):
             raise ConversationNotFoundError()
-        row = await conv_model.get_conversation(db, conversation_id)
-        count = await conv_model.count_messages(db, conversation_id)
+        row = await conv_model.get_conversation(db, session_id)
+        count = await conv_model.count_messages(db, session_id)
         return ConversationOut(**row, message_count=count)  # type: ignore[arg-type]
 
-    async def delete_conversation(self, db: aiosqlite.Connection, conversation_id: str) -> None:
+    async def delete_conversation(self, db: aiosqlite.Connection, session_id: str) -> None:
         """Delete a conversation, its messages, and its agent checkpoints.
 
         Raises:
             ConversationNotFoundError: When it does not exist.
         """
-        if not await conv_model.delete_conversation(db, conversation_id):
+        if not await conv_model.delete_conversation(db, session_id):
             raise ConversationNotFoundError()
 
         # The conversation id doubles as the LangGraph thread id. A failure here
         # leaves orphaned checkpoints, which is harmless — don't fail the delete.
         try:
-            await matcher_agent.clear_chat_history(conversation_id)
+            await matcher_agent.clear_chat_history(session_id)
         except Exception as e:
-            logger.warning("checkpoint_clear_failed", conversation_id=conversation_id, error=str(e))
+            logger.warning("checkpoint_clear_failed", session_id=session_id, error=str(e))
 
     async def list_messages(
-        self, db: aiosqlite.Connection, conversation_id: str
+        self, db: aiosqlite.Connection, session_id: str
     ) -> list[MatchMessageOut]:
         """Return a conversation's messages.
 
         Raises:
             ConversationNotFoundError: When the conversation does not exist.
         """
-        if not await conv_model.get_conversation(db, conversation_id):
+        if not await conv_model.get_conversation(db, session_id):
             raise ConversationNotFoundError()
-        return [MatchMessageOut(**row) for row in await conv_model.list_messages(db, conversation_id)]
+        return [MatchMessageOut(**row) for row in await conv_model.list_messages(db, session_id)]
 
     # ── One streamed turn ─────────────────────────────────────────────────
 
     async def stream_turn(
         self,
         db: aiosqlite.Connection,
-        conversation_id: str,
+        session_id: str,
         request: SendMessageRequest,
     ) -> AsyncGenerator[str, None]:
         """Run one agent turn, yielding SSE frames as it goes.
 
         Args:
             db: Open connection, used for persistence around the turn.
-            conversation_id: Target conversation; also the LangGraph thread id.
+            session_id: Target conversation; also the LangGraph thread id.
             request: The user's message, scope, and chosen resume.
 
         Yields:
@@ -119,7 +119,7 @@ class MatchService:
         Raises:
             ConversationNotFoundError: When the conversation does not exist.
         """
-        conversation = await conv_model.get_conversation(db, conversation_id)
+        conversation = await conv_model.get_conversation(db, session_id)
         if not conversation:
             raise ConversationNotFoundError()
 
@@ -128,7 +128,7 @@ class MatchService:
 
         await conv_model.add_message(
             db,
-            conversation_id,
+            session_id,
             role="user",
             content=request.content,
             scope=request.scope.model_dump(),
@@ -138,7 +138,7 @@ class MatchService:
         # Name the conversation after its opening question.
         if not conversation["title"] or conversation["title"] == "新对话":
             await conv_model.rename_conversation(
-                db, conversation_id, conv_model.derive_title(request.content)
+                db, session_id, conv_model.derive_title(request.content)
             )
 
         message_id = str(uuid.uuid4())
@@ -157,14 +157,14 @@ class MatchService:
 
         token = set_turn_context(turn_ctx)
         try:
-            agent_task = asyncio.create_task(self._run_agent(request, conversation_id, bridge))
+            agent_task = asyncio.create_task(self._run_agent(request, session_id, bridge))
 
             async for frame in self._drain(queue, agent_task):
                 yield frame
 
             error = agent_task.exception() if agent_task.done() else None
             if error is not None:
-                logger.exception("match_turn_failed", conversation_id=conversation_id, error=str(error))
+                logger.exception("match_turn_failed", session_id=session_id, error=str(error))
                 yield _sse("error", {"code": "AGENT_FAILED", "message": str(error)[:300]})
         finally:
             reset_turn_context(token)
@@ -179,7 +179,7 @@ class MatchService:
 
         await conv_model.add_message(
             db,
-            conversation_id,
+            session_id,
             role="assistant",
             content=narration,
             final_answer=final_answer,
@@ -193,7 +193,7 @@ class MatchService:
         yield _sse("message_end", {"message_id": message_id})
 
     async def _run_agent(
-        self, request: SendMessageRequest, conversation_id: str, bridge
+        self, request: SendMessageRequest, session_id: str, bridge
     ) -> None:
         """Invoke the agent for one turn.
 
@@ -204,7 +204,7 @@ class MatchService:
         await asyncio.wait_for(
             matcher_agent.run(
                 [Message(role="user", content=request.content)],
-                conversation_id,
+                session_id,
                 callbacks=[bridge],
             ),
             timeout=TURN_TIMEOUT_SECONDS,

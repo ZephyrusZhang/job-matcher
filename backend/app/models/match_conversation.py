@@ -58,19 +58,19 @@ def derive_title(text: str) -> str:
 
 async def create_conversation(db: aiosqlite.Connection, title: str = "") -> dict:
     """Create an empty conversation."""
-    conversation_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())
     await db.execute(
         "INSERT INTO match_conversations (id, title) VALUES (?, ?)",
-        (conversation_id, title or "新对话"),
+        (session_id, title or "新对话"),
     )
     await db.commit()
-    return await get_conversation(db, conversation_id)  # type: ignore[return-value]
+    return await get_conversation(db, session_id)  # type: ignore[return-value]
 
 
-async def get_conversation(db: aiosqlite.Connection, conversation_id: str) -> dict | None:
+async def get_conversation(db: aiosqlite.Connection, session_id: str) -> dict | None:
     """Return one conversation."""
     async with db.execute(
-        "SELECT * FROM match_conversations WHERE id = ?", (conversation_id,)
+        "SELECT * FROM match_conversations WHERE id = ?", (session_id,)
     ) as cursor:
         row = await cursor.fetchone()
         return dict(row) if row else None
@@ -85,7 +85,7 @@ async def list_conversations(db: aiosqlite.Connection) -> list[dict]:
         """
         SELECT c.*, COUNT(m.id) AS message_count
         FROM match_conversations c
-        LEFT JOIN match_messages m ON m.conversation_id = c.id
+        LEFT JOIN match_messages m ON m.session_id = c.id
         GROUP BY c.id
         ORDER BY c.updated_at DESC
         """
@@ -93,28 +93,28 @@ async def list_conversations(db: aiosqlite.Connection) -> list[dict]:
         return [dict(row) for row in await cursor.fetchall()]
 
 
-async def rename_conversation(db: aiosqlite.Connection, conversation_id: str, title: str) -> bool:
+async def rename_conversation(db: aiosqlite.Connection, session_id: str, title: str) -> bool:
     """Rename a conversation. Returns ``False`` when it does not exist."""
     cursor = await db.execute(
         "UPDATE match_conversations SET title = ?, updated_at = datetime('now') WHERE id = ?",
-        (title, conversation_id),
+        (title, session_id),
     )
     await db.commit()
     return cursor.rowcount > 0
 
 
-async def touch_conversation(db: aiosqlite.Connection, conversation_id: str) -> None:
+async def touch_conversation(db: aiosqlite.Connection, session_id: str) -> None:
     """Bump ``updated_at`` so the conversation floats to the top of the list."""
     await db.execute(
         "UPDATE match_conversations SET updated_at = datetime('now') WHERE id = ?",
-        (conversation_id,),
+        (session_id,),
     )
     await db.commit()
 
 
-async def delete_conversation(db: aiosqlite.Connection, conversation_id: str) -> bool:
+async def delete_conversation(db: aiosqlite.Connection, session_id: str) -> bool:
     """Delete a conversation and its messages via cascade."""
-    cursor = await db.execute("DELETE FROM match_conversations WHERE id = ?", (conversation_id,))
+    cursor = await db.execute("DELETE FROM match_conversations WHERE id = ?", (session_id,))
     await db.commit()
     return cursor.rowcount > 0
 
@@ -124,7 +124,7 @@ async def delete_conversation(db: aiosqlite.Connection, conversation_id: str) ->
 
 async def add_message(
     db: aiosqlite.Connection,
-    conversation_id: str,
+    session_id: str,
     role: str,
     content: str = "",
     final_answer: str | None = None,
@@ -138,7 +138,7 @@ async def add_message(
 
     Args:
         db: Open connection.
-        conversation_id: Owning conversation.
+        session_id: Owning conversation.
         role: ``user`` or ``assistant``.
         content: For assistants this is narration — the thinking text emitted
             between tool calls, not the deliverable.
@@ -156,13 +156,13 @@ async def add_message(
     await db.execute(
         """
         INSERT INTO match_messages
-            (id, conversation_id, role, content, final_answer, scope, resume_id,
+            (id, session_id, role, content, final_answer, scope, resume_id,
              tool_events, job_ids)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             new_id,
-            conversation_id,
+            session_id,
             role,
             content,
             final_answer,
@@ -174,7 +174,7 @@ async def add_message(
     )
     await db.execute(
         "UPDATE match_conversations SET updated_at = datetime('now') WHERE id = ?",
-        (conversation_id,),
+        (session_id,),
     )
     await db.commit()
     return await get_message(db, new_id)  # type: ignore[return-value]
@@ -187,18 +187,18 @@ async def get_message(db: aiosqlite.Connection, message_id: str) -> dict | None:
         return _message_to_dict(row) if row else None
 
 
-async def list_messages(db: aiosqlite.Connection, conversation_id: str) -> list[dict]:
+async def list_messages(db: aiosqlite.Connection, session_id: str) -> list[dict]:
     """Return a conversation's messages oldest first."""
     async with db.execute(
-        "SELECT * FROM match_messages WHERE conversation_id = ? ORDER BY created_at, rowid",
-        (conversation_id,),
+        "SELECT * FROM match_messages WHERE session_id = ? ORDER BY created_at, rowid",
+        (session_id,),
     ) as cursor:
         return [_message_to_dict(row) for row in await cursor.fetchall()]
 
 
-async def count_messages(db: aiosqlite.Connection, conversation_id: str) -> int:
+async def count_messages(db: aiosqlite.Connection, session_id: str) -> int:
     """Return how many messages a conversation holds."""
     async with db.execute(
-        "SELECT COUNT(*) FROM match_messages WHERE conversation_id = ?", (conversation_id,)
+        "SELECT COUNT(*) FROM match_messages WHERE session_id = ?", (session_id,)
     ) as cursor:
         return (await cursor.fetchone())[0]

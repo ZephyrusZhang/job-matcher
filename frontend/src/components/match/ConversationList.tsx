@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Check, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react"
 import { useConversationStore } from "@/store/useConversationStore"
-import { CONVERSATION_PARAM, conversationHref } from "@/lib/matchRoutes"
+import { SESSION_PARAM, conversationHref } from "@/lib/matchRoutes"
 import { cn } from "@/lib/utils"
 import type { Conversation } from "@/types/match"
 
@@ -28,7 +28,7 @@ export function ConversationList() {
   const router = useRouter()
   const searchParams = useSearchParams()
   // No conversation is selected by default; only the URL marks one active.
-  const activeId = searchParams.get(CONVERSATION_PARAM)
+  const activeId = searchParams.get(SESSION_PARAM)
 
   useEffect(() => {
     fetchAll()

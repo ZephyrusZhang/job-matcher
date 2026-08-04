@@ -43,50 +43,50 @@ async def list_conversations(
     return ApiResponse.ok(data=[c.model_dump() for c in conversations])
 
 
-@router.patch("/match/conversations/{conversation_id}")
+@router.patch("/match/conversations/{session_id}")
 async def rename_conversation(
-    conversation_id: str,
+    session_id: str,
     body: ConversationUpdate,
     db: aiosqlite.Connection = Depends(get_database),
     service: MatchService = Depends(get_match_service),
 ):
     """Rename a conversation."""
-    conversation = await service.rename_conversation(db, conversation_id, body.title)
+    conversation = await service.rename_conversation(db, session_id, body.title)
     return ApiResponse.ok(data=conversation.model_dump())
 
 
-@router.delete("/match/conversations/{conversation_id}")
+@router.delete("/match/conversations/{session_id}")
 async def delete_conversation(
-    conversation_id: str,
+    session_id: str,
     db: aiosqlite.Connection = Depends(get_database),
     service: MatchService = Depends(get_match_service),
 ):
     """Delete a conversation, its messages, and its agent checkpoints."""
-    await service.delete_conversation(db, conversation_id)
+    await service.delete_conversation(db, session_id)
     return ApiResponse.ok(data=None)
 
 
-@router.get("/match/conversations/{conversation_id}/messages")
+@router.get("/match/conversations/{session_id}/messages")
 async def list_messages(
-    conversation_id: str,
+    session_id: str,
     db: aiosqlite.Connection = Depends(get_database),
     service: MatchService = Depends(get_match_service),
 ):
     """Return a conversation's message history."""
-    messages = await service.list_messages(db, conversation_id)
+    messages = await service.list_messages(db, session_id)
     return ApiResponse.ok(data=[m.model_dump() for m in messages])
 
 
-@router.post("/match/conversations/{conversation_id}/messages")
+@router.post("/match/conversations/{session_id}/messages")
 async def send_message(
-    conversation_id: str,
+    session_id: str,
     body: SendMessageRequest,
     db: aiosqlite.Connection = Depends(get_database),
     service: MatchService = Depends(get_match_service),
 ):
     """Send a message and stream the agent's turn back as SSE."""
     return StreamingResponse(
-        service.stream_turn(db, conversation_id, body),
+        service.stream_turn(db, session_id, body),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

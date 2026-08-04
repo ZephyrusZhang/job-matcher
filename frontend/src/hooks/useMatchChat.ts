@@ -59,7 +59,7 @@ export function useMatchChat() {
       // Show the user's turn immediately rather than waiting for the reload.
       const optimistic: MatchMessage = {
         id: `local-${Date.now()}`,
-        conversation_id: conversationId,
+        session_id: conversationId,
         role: "user",
         content: payload.content,
         final_answer: null,

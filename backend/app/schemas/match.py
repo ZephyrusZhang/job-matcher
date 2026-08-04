@@ -41,7 +41,7 @@ class MatchMessageOut(BaseModel):
     """A stored message as the UI renders it."""
 
     id: str
-    conversation_id: str
+    session_id: str
     role: str
     content: str = ""
     final_answer: str | None = None

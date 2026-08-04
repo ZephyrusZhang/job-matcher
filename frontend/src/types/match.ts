@@ -20,7 +20,7 @@ export interface ToolEvent {
 
 export interface MatchMessage {
   id: string
-  conversation_id: string
+  session_id: string
   role: "user" | "assistant"
   /** Assistant narration between tool calls — not the deliverable. */
   content: string

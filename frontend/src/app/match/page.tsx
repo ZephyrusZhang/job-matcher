@@ -4,11 +4,11 @@ import { Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { MatchChat } from "@/components/match/MatchChat"
 import { ReadOnlyOverlay } from "@/components/common/ReadOnlyOverlay"
-import { CONVERSATION_PARAM } from "@/lib/matchRoutes"
+import { SESSION_PARAM } from "@/lib/matchRoutes"
 
 function MatchPageBody() {
   const searchParams = useSearchParams()
-  const conversationId = searchParams.get(CONVERSATION_PARAM)
+  const conversationId = searchParams.get(SESSION_PARAM)
 
   return <MatchChat conversationId={conversationId} />
 }

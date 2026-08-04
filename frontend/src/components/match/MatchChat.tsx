@@ -15,7 +15,7 @@ interface MatchChatProps {
 }
 
 /**
- * Shared body for a blank chat and for one addressed by ?conversation_id.
+ * Shared body for a blank chat and for one addressed by ?session_id.
  *
  * A conversation is created only when the first message is sent, so opening a
  * new chat leaves no empty row in the sidebar. On send the route switches to

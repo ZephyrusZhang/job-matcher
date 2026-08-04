@@ -97,7 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_match_conv_updated ON match_conversations(updated
 
 CREATE TABLE IF NOT EXISTS match_messages (
     id              TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL REFERENCES match_conversations(id) ON DELETE CASCADE,
+    session_id      TEXT NOT NULL REFERENCES match_conversations(id) ON DELETE CASCADE,
     role            TEXT NOT NULL,
     content         TEXT NOT NULL DEFAULT '',
     final_answer    TEXT,
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS match_messages (
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_match_msg_conv ON match_messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_match_msg_session ON match_messages(session_id, created_at);
 
 CREATE TABLE IF NOT EXISTS settings (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
