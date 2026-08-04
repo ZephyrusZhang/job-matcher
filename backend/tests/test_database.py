@@ -19,7 +19,17 @@ async def test_init_database(tmp_path):
         ) as cursor:
             tables = [row[0] for row in await cursor.fetchall()]
 
-        expected = ["chat_messages", "crawl_tasks", "favorites", "jobs", "reports", "resume", "settings"]
+        expected = [
+            "chat_messages",
+            "crawl_tasks",
+            "favorites",
+            "jobs",
+            "match_conversations",
+            "match_messages",
+            "reports",
+            "resumes",
+            "settings",
+        ]
         for t in expected:
             assert t in tables, f"Table {t} not found"
 

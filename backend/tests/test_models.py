@@ -92,34 +92,51 @@ async def test_favorite_crud(seeded_db):
 
 @pytest.mark.asyncio
 async def test_resume_crud(seeded_db):
-    """Test resume upsert/get/delete."""
+    """Test resume create/get/list/default/delete."""
     db = seeded_db
 
     # Initially empty
     assert await resume_model.get_resume(db) is None
 
-    # Upsert
+    # First resume becomes the default automatically
     parsed = {"skills": ["Python"], "experience_years": 2, "education": "本科"}
-    await resume_model.upsert_resume(db, "test.pdf", "/path/test.pdf", parsed)
+    first = await resume_model.create_resume(db, "test.pdf", "/path/test.pdf", parsed)
+    assert first["is_default"] is True
+    assert first["label"] == "test.pdf"
 
     resume = await resume_model.get_resume(db)
     assert resume is not None
     assert resume["filename"] == "test.pdf"
     assert resume["parsed_data"]["skills"] == ["Python"]
 
-    # Replace
+    # A second resume does not steal the default unless asked
     parsed2 = {"skills": ["Go", "Python"], "experience_years": 3, "education": "硕士"}
-    await resume_model.upsert_resume(db, "new.pdf", "/path/new.pdf", parsed2)
+    second = await resume_model.create_resume(db, "new.pdf", "/path/new.pdf", parsed2)
+    assert second["is_default"] is False
+    assert (await resume_model.get_resume(db))["filename"] == "test.pdf"
+    assert len(await resume_model.list_resumes(db)) == 2
 
-    resume = await resume_model.get_resume(db)
-    assert resume["filename"] == "new.pdf"
+    # Promoting swaps the default
+    assert await resume_model.set_default_resume(db, second["id"]) is True
+    assert (await resume_model.get_resume(db))["filename"] == "new.pdf"
 
-    # Delete
-    await resume_model.delete_resume(db)
+    # Fetch by id ignores the default
+    assert (await resume_model.get_resume(db, first["id"]))["filename"] == "test.pdf"
+
+    # Renaming
+    assert await resume_model.rename_resume(db, first["id"], "旧简历") is True
+    assert (await resume_model.get_resume(db, first["id"]))["label"] == "旧简历"
+
+    # Deleting the default promotes the survivor
+    assert await resume_model.delete_resume(db, second["id"]) is True
+    remaining = await resume_model.get_resume(db)
+    assert remaining["filename"] == "test.pdf"
+    assert remaining["is_default"] is True
+
+    assert await resume_model.delete_resume(db, first["id"]) is True
     assert await resume_model.get_resume(db) is None
+    assert await resume_model.delete_resume(db, "missing") is False
 
-
-@pytest.mark.asyncio
 async def test_report_crud(seeded_db):
     """Test report upsert/get/delete."""
     db = seeded_db
