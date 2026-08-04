@@ -15,7 +15,6 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const showConversations = pathname === "/match"
 
   return (
     <aside className="hidden md:flex w-56 lg:w-56 md:w-48 flex-col border-r border-border-default bg-bg-secondary shrink-0">
@@ -26,14 +25,9 @@ export function Sidebar() {
         </span>
       </div>
 
-      {/* Primary navigation. Shrinks to its content on /match so the
-          conversation list below can claim the remaining height. */}
-      <nav
-        className={cn(
-          "flex flex-col px-3 py-3 gap-1 overflow-hidden",
-          showConversations ? "shrink-0" : "flex-1",
-        )}
-      >
+      {/* Primary navigation. Fixed height so the always-present conversation
+          list below claims the remaining space. */}
+      <nav className="flex shrink-0 flex-col gap-1 overflow-hidden px-3 py-3">
         {navItems.map((item) => {
           const isActive = pathname === item.href
           const Icon = item.icon
@@ -55,12 +49,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      {showConversations && (
-        <>
-          <Separator className="mx-3 mb-2 bg-border-default" />
-          <ConversationList />
-        </>
-      )}
+      <Separator className="mx-3 mb-2 bg-border-default" />
+      <ConversationList />
 
       {/* Footer: settings and theme share one row, mirroring the reference's
           two-action footer instead of stacking another full-width nav entry. */}
