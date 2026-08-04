@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Check, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react"
 import { useConversationStore } from "@/store/useConversationStore"
 import { cn } from "@/lib/utils"
@@ -16,8 +16,6 @@ import type { Conversation } from "@/types/match"
  */
 export function ConversationList() {
   const conversations = useConversationStore((s) => s.conversations)
-  const activeId = useConversationStore((s) => s.activeId)
-  const select = useConversationStore((s) => s.select)
   const fetchAll = useConversationStore((s) => s.fetch)
   const create = useConversationStore((s) => s.create)
   const rename = useConversationStore((s) => s.rename)
@@ -27,12 +25,13 @@ export function ConversationList() {
   const [draft, setDraft] = useState("")
   const [menuId, setMenuId] = useState<string | null>(null)
   const router = useRouter()
+  const params = useParams<{ id: string }>()
+  // No conversation is selected by default; only the URL marks one active.
+  const activeId = typeof params?.id === "string" ? params.id : null
 
   useEffect(() => {
     fetchAll()
   }, [fetchAll])
-
-  const effectiveId = activeId ?? conversations[0]?.id ?? null
 
   const startRename = (conversation: Conversation) => {
     setEditingId(conversation.id)
@@ -40,15 +39,11 @@ export function ConversationList() {
     setMenuId(null)
   }
 
-  const open = (id: string) => {
-    select(id)
-    router.push("/match")
-  }
+  const open = (id: string) => router.push(`/match/chat/${id}`)
 
-  const handleCreate = async () => {
-    await create()
-    router.push("/match")
-  }
+  // A blank chat is just a route — the conversation is created on first send,
+  // so the sidebar gains no empty entry.
+  const startNew = () => router.push("/match")
 
   const commitRename = (id: string) => {
     const title = draft.trim()
@@ -62,7 +57,7 @@ export function ConversationList() {
         <span className="text-xs text-text-muted">对话记录</span>
         <button
           type="button"
-          onClick={handleCreate}
+          onClick={startNew}
           className="rounded p-1 text-text-muted transition-colors hover:bg-[var(--nav-hover-bg)] hover:text-text-primary"
           aria-label="新对话"
           title="新对话"
@@ -76,7 +71,7 @@ export function ConversationList() {
           <p className="px-1.5 py-2 text-sm text-text-muted">还没有对话</p>
         ) : (
           conversations.map((conversation) => {
-            const isActive = conversation.id === effectiveId
+            const isActive = conversation.id === activeId
             const isEditing = editingId === conversation.id
 
             return (
@@ -165,6 +160,7 @@ export function ConversationList() {
                           onClick={() => {
                             setMenuId(null)
                             remove(conversation.id)
+                            if (conversation.id === activeId) router.push("/match")
                           }}
                           className="flex w-full items-center gap-1.5 px-2.5 py-2 text-sm text-red-400 hover:bg-bg-tertiary"
                         >
