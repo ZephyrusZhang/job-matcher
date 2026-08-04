@@ -1,0 +1,290 @@
+"use client"
+
+import { useEffect, useRef, useState } from "react"
+import { AtSign, FileText, Loader2, Send, Square, Upload, X } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { getCompanies } from "@/lib/api/companies"
+import { apiGet } from "@/lib/api/client"
+import { cn } from "@/lib/utils"
+import type { MatchScope, ResumeSummary, ScopeMode } from "@/types/match"
+import type { Company } from "@/types/company"
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
+
+interface MatchComposerProps {
+  scope: MatchScope
+  onScopeChange: (scope: MatchScope) => void
+  resumeId: string | null
+  onResumeChange: (id: string | null) => void
+  onSend: (content: string) => void
+  onStop: () => void
+  isStreaming: boolean
+}
+
+export function MatchComposer({
+  scope,
+  onScopeChange,
+  resumeId,
+  onResumeChange,
+  onSend,
+  onStop,
+  isStreaming,
+}: MatchComposerProps) {
+  const [value, setValue] = useState("")
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [resumes, setResumes] = useState<ResumeSummary[]>([])
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const loadResumes = () => {
+    apiGet<ResumeSummary[]>("/api/resumes")
+      .then((res) => {
+        const list = res.data ?? []
+        setResumes(list)
+        if (!resumeId) {
+          const fallback = list.find((r) => r.is_default) ?? list[0]
+          if (fallback) onResumeChange(fallback.id)
+        }
+      })
+      .catch(() => setResumes([]))
+  }
+
+  useEffect(() => {
+    getCompanies()
+      .then((res) => setCompanies(res.data ?? []))
+      .catch(() => setCompanies([]))
+    loadResumes()
+    // Loading once on mount is intentional; both lists change rarely.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const activeResume = resumes.find((r) => r.id === resumeId) ?? null
+
+  const submit = () => {
+    const content = value.trim()
+    if (!content || isStreaming) return
+    onSend(content)
+    setValue("")
+  }
+
+  const toggleCompany = (id: string) => {
+    const next = scope.company_ids.includes(id)
+      ? scope.company_ids.filter((c) => c !== id)
+      : [...scope.company_ids, id]
+    onScopeChange({ mode: "companies", company_ids: next })
+  }
+
+  const setMode = (mode: ScopeMode) => {
+    onScopeChange({ mode, company_ids: mode === "favorites" ? [] : scope.company_ids })
+  }
+
+  const upload = async (file: File) => {
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch(`${API_BASE}/api/resumes`, { method: "POST", body: form })
+      const body = await res.json()
+      if (body?.data?.id) onResumeChange(body.data.id)
+      loadResumes()
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const chips: { key: string; label: string; onRemove: () => void }[] = []
+  if (activeResume) {
+    chips.push({
+      key: "resume",
+      label: activeResume.label,
+      onRemove: () => onResumeChange(null),
+    })
+  }
+  if (scope.mode === "favorites") {
+    chips.push({ key: "favorites", label: "收藏岗位", onRemove: () => setMode("companies") })
+  } else {
+    for (const id of scope.company_ids) {
+      const name = companies.find((c) => c.id === id)?.name ?? id
+      chips.push({ key: id, label: name, onRemove: () => toggleCompany(id) })
+    }
+  }
+
+  return (
+    <div className="border-t border-border-subtle bg-bg-primary px-4 py-3">
+      <div className="rounded-lg border border-border-subtle bg-bg-secondary focus-within:border-border-default">
+        <textarea
+          ref={textareaRef}
+          rows={2}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault()
+              submit()
+            }
+          }}
+          placeholder="描述你的诉求，例如：帮我找上海的后端实习，偏基础架构方向"
+          className="w-full resize-none bg-transparent px-3.5 pt-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+        />
+
+        {chips.length > 0 && (
+          <div className="flex flex-wrap gap-1 px-3.5 pb-1">
+            {chips.map((chip) => (
+              <span
+                key={chip.key}
+                className="flex items-center gap-1 rounded bg-bg-tertiary px-1.5 py-0.5 text-[11px] text-text-secondary"
+              >
+                {chip.label}
+                <button
+                  type="button"
+                  onClick={chip.onRemove}
+                  className="text-text-muted hover:text-text-primary"
+                  aria-label={`移除 ${chip.label}`}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-1 px-2.5 pb-2 pt-1">
+          {/* Scope picker */}
+          <Popover>
+            <PopoverTrigger
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-border-subtle text-text-muted transition-colors hover:border-border-default hover:text-text-primary"
+              aria-label="选择检索范围"
+            >
+              <AtSign className="h-3.5 w-3.5" />
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2">
+              <button
+                type="button"
+                onClick={() => setMode("favorites")}
+                className={cn(
+                  "mb-1 flex w-full items-center justify-between rounded px-2 py-1.5 text-sm transition-colors hover:bg-bg-tertiary",
+                  scope.mode === "favorites" ? "text-accent" : "text-text-primary",
+                )}
+              >
+                收藏岗位
+                {scope.mode === "favorites" && <span className="text-xs">已选</span>}
+              </button>
+
+              <div className="mb-1 border-t border-border-subtle pt-1 text-[11px] text-text-muted">
+                按公司（可多选）
+              </div>
+              <div className="max-h-56 overflow-y-auto">
+                {companies.map((company) => {
+                  const checked =
+                    scope.mode === "companies" && scope.company_ids.includes(company.id)
+                  return (
+                    <button
+                      key={company.id}
+                      type="button"
+                      onClick={() => toggleCompany(company.id)}
+                      className="flex w-full items-center justify-between rounded px-2 py-1.5 text-sm text-text-primary transition-colors hover:bg-bg-tertiary"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "flex h-3.5 w-3.5 items-center justify-center rounded-sm border",
+                            checked
+                              ? "border-accent bg-accent text-white"
+                              : "border-border-default",
+                          )}
+                        >
+                          {checked && <span className="text-[9px] leading-none">✓</span>}
+                        </span>
+                        {company.name}
+                      </span>
+                      <span className="text-xs text-text-muted">{company.job_count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Resume picker */}
+          <Popover>
+            <PopoverTrigger
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-border-subtle text-text-muted transition-colors hover:border-border-default hover:text-text-primary"
+              aria-label="选择简历"
+            >
+              {uploading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileText className="h-3.5 w-3.5" />
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2">
+              {resumes.length === 0 && (
+                <p className="px-2 py-1.5 text-xs text-text-muted">还没有简历</p>
+              )}
+              {resumes.map((resume) => (
+                <button
+                  key={resume.id}
+                  type="button"
+                  onClick={() => onResumeChange(resume.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-bg-tertiary",
+                    resume.id === resumeId ? "text-accent" : "text-text-primary",
+                  )}
+                >
+                  <span className="truncate">{resume.label}</span>
+                  {resume.is_default && (
+                    <span className="ml-2 shrink-0 text-[10px] text-text-muted">默认</span>
+                  )}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="mt-1 flex w-full items-center gap-2 border-t border-border-subtle px-2 pt-2 text-sm text-text-secondary hover:text-text-primary"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                上传新简历
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.docx"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) upload(file)
+                  e.target.value = ""
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+
+          <div className="ml-auto">
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={onStop}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-bg-tertiary text-text-secondary transition-colors hover:text-text-primary"
+                aria-label="停止生成"
+              >
+                <Square className="h-3 w-3" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={submit}
+                disabled={!value.trim()}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white transition-opacity disabled:opacity-30"
+                aria-label="发送"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
