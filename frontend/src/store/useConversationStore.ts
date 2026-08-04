@@ -19,7 +19,7 @@ interface ConversationStore {
  * Conversation list state.
  *
  * Only the list lives here — which conversation is open is expressed by the
- * URL (`/match/chat/[id]`), so there is no selection to keep in sync.
+ * URL (`/match?conversation_id=…`), so there is no selection to keep in sync.
  */
 export const useConversationStore = create<ConversationStore>((set, get) => ({
   conversations: [],

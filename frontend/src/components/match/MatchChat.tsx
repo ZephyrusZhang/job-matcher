@@ -6,6 +6,7 @@ import { ChatMessageList } from "@/components/match/ChatMessageList"
 import { MatchComposer } from "@/components/match/MatchComposer"
 import { useMatchChat } from "@/hooks/useMatchChat"
 import { useConversationStore } from "@/store/useConversationStore"
+import { conversationHref } from "@/lib/matchRoutes"
 import type { MatchScope } from "@/types/match"
 
 interface MatchChatProps {
@@ -14,7 +15,7 @@ interface MatchChatProps {
 }
 
 /**
- * Shared body for both /match (new) and /match/chat/[id] (existing).
+ * Shared body for a blank chat and for one addressed by ?conversation_id.
  *
  * A conversation is created only when the first message is sent, so opening a
  * new chat leaves no empty row in the sidebar. On send the route switches to
@@ -46,7 +47,7 @@ export function MatchChat({ conversationId }: MatchChatProps) {
     if (!id) {
       id = await create()
       if (!id) return
-      router.push(`/match/chat/${id}`)
+      router.push(conversationHref(id))
     }
 
     await chat.send(id, { content, scope, resume_id: resumeId })

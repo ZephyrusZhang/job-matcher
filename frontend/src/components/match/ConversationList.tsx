@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Check, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react"
 import { useConversationStore } from "@/store/useConversationStore"
+import { CONVERSATION_PARAM, conversationHref } from "@/lib/matchRoutes"
 import { cn } from "@/lib/utils"
 import type { Conversation } from "@/types/match"
 
@@ -25,9 +26,9 @@ export function ConversationList() {
   const [draft, setDraft] = useState("")
   const [menuId, setMenuId] = useState<string | null>(null)
   const router = useRouter()
-  const params = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
   // No conversation is selected by default; only the URL marks one active.
-  const activeId = typeof params?.id === "string" ? params.id : null
+  const activeId = searchParams.get(CONVERSATION_PARAM)
 
   useEffect(() => {
     fetchAll()
@@ -39,11 +40,11 @@ export function ConversationList() {
     setMenuId(null)
   }
 
-  const open = (id: string) => router.push(`/match/chat/${id}`)
+  const open = (id: string) => router.push(conversationHref(id))
 
   // A blank chat is just a route — the conversation is created on first send,
   // so the sidebar gains no empty entry.
-  const startNew = () => router.push("/match")
+  const startNew = () => router.push(conversationHref(null))
 
   const commitRename = (id: string) => {
     const title = draft.trim()
@@ -160,7 +161,8 @@ export function ConversationList() {
                           onClick={() => {
                             setMenuId(null)
                             remove(conversation.id)
-                            if (conversation.id === activeId) router.push("/match")
+                            if (conversation.id === activeId)
+                              router.push(conversationHref(null))
                           }}
                           className="flex w-full items-center gap-1.5 px-2.5 py-2 text-sm text-red-400 hover:bg-bg-tertiary"
                         >

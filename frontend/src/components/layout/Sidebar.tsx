@@ -1,5 +1,6 @@
 "use client"
 
+import { Suspense } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutList, Settings, Target } from "lucide-react"
@@ -50,7 +51,12 @@ export function Sidebar() {
       </nav>
 
       <Separator className="mx-3 mb-2 bg-border-default" />
-      <ConversationList />
+      {/* ConversationList reads useSearchParams, and the sidebar renders on
+          every route — without a boundary Next bails out of static rendering
+          for all of them, including /404. */}
+      <Suspense fallback={<div className="flex-1" />}>
+        <ConversationList />
+      </Suspense>
 
       {/* Footer: settings and theme share one row, mirroring the reference's
           two-action footer instead of stacking another full-width nav entry. */}

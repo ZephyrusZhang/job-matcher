@@ -1,13 +1,26 @@
 "use client"
 
+import { Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import { MatchChat } from "@/components/match/MatchChat"
 import { ReadOnlyOverlay } from "@/components/common/ReadOnlyOverlay"
+import { CONVERSATION_PARAM } from "@/lib/matchRoutes"
 
-/** A blank conversation. Nothing is persisted until the first message. */
+function MatchPageBody() {
+  const searchParams = useSearchParams()
+  const conversationId = searchParams.get(CONVERSATION_PARAM)
+
+  return <MatchChat conversationId={conversationId} />
+}
+
 export default function MatchPage() {
   return (
     <ReadOnlyOverlay featureName="智能匹配">
-      <MatchChat conversationId={null} />
+      {/* useSearchParams needs a Suspense boundary or Next opts the whole
+          route out of static rendering at build time. */}
+      <Suspense fallback={<div className="h-full" />}>
+        <MatchPageBody />
+      </Suspense>
     </ReadOnlyOverlay>
   )
 }
