@@ -22,20 +22,53 @@ IGNORED_PATTERNS = [
 ]
 
 
+# 单次 Playwright 操作的上限。宁可报错，也不要让 agent 的工具调用永久挂起。
+OP_TIMEOUT_SECONDS = 180
+
+
 class BrowserManager:
+    """管理 Playwright 浏览器，所有操作绑定在一个专属事件循环上。
+
+    这是模块级单例（见 tools.py），会被多次爬取复用，因此 ``close()`` 只关闭
+    浏览器、**保留事件循环**；真正要销毁循环时用 ``shutdown()``。早期版本在
+    ``close()`` 里停掉了循环，导致第二次爬取的 ``open()`` 把协程提交给一个已停
+    止的循环，然后在无超时的 ``.result()`` 上永久阻塞。
+    """
+
     def __init__(self):
         self.pw = None
         self.browser = None
         self.page = None
         self.captured: list[dict] = []
-        # 专属事件循环，Playwright 所有操作绑定在此
-        self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
-        self._thread.start()
+        self._loop = None
+        self._thread = None
+        self._lock = threading.Lock()
+        self._ensure_loop()
 
-    def _run(self, coro):
-        """在专属事件循环上执行协程，阻塞等待结果"""
-        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+    def _ensure_loop(self):
+        """确保专属事件循环存在且在运行，必要时重建。"""
+        with self._lock:
+            if self._loop is not None and not self._loop.is_closed() and self._loop.is_running():
+                return
+            self._loop = asyncio.new_event_loop()
+            self._thread = threading.Thread(
+                target=self._loop.run_forever, name="browser-mgr-loop", daemon=True
+            )
+            self._thread.start()
+
+    def _run(self, coro, timeout: float | None = OP_TIMEOUT_SECONDS):
+        """在专属事件循环上执行协程，阻塞等待结果。
+
+        Raises:
+            TimeoutError: 超过 ``timeout`` 仍未完成。
+        """
+        self._ensure_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError:
+            future.cancel()
+            raise TimeoutError(f"browser operation timed out after {timeout}s")
 
     def open(self, url: str) -> dict:
         return self._run(self._open(url))
@@ -47,9 +80,21 @@ class BrowserManager:
         return self._run(self._screenshot(full_page))
 
     def close(self):
-        self._run(self._close())
-        self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join(timeout=5)
+        """关闭浏览器，释放 Playwright 资源；事件循环保持存活以便下次爬取复用。"""
+        try:
+            self._run(self._close(), timeout=30)
+        finally:
+            self.captured = []
+
+    def shutdown(self):
+        """彻底销毁事件循环。仅在进程退出时调用。"""
+        self.close()
+        with self._lock:
+            if self._loop is not None and self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._loop.stop)
+            if self._thread is not None:
+                self._thread.join(timeout=5)
+            self._loop = self._thread = None
 
     # ── 异步实现 ──
 

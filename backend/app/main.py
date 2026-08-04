@@ -93,6 +93,17 @@ async def lifespan(app: FastAPI):
     # Flush before closing anything else: Langfuse exports spans in the
     # background, so a shutdown right after an agent run would drop its tail.
     flush_langfuse()
+
+    # Tear down the crawl browser's dedicated loop. Only here — per-crawl
+    # cleanup calls browser_mgr.close(), which deliberately keeps the loop
+    # alive so the next crawl can reuse it.
+    try:
+        from app.crawl.tools import browser_mgr
+
+        browser_mgr.shutdown()
+    except Exception as e:
+        struct_logger.warning("browser_shutdown_failed", error=str(e))
+
     await cache_service.close()
     await close_connection_pool()
     struct_logger.info("application_shutdown")
