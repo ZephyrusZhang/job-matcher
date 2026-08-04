@@ -11,6 +11,7 @@ from app.services.company_service import CompanyService
 from app.services.crawl_service import CrawlService
 from app.services.favorite_service import FavoriteService
 from app.services.job_service import JobService
+from app.services.match_service import MatchService
 from app.services.report_service import ReportService
 from app.services.resume_service import ResumeService
 from app.services.settings_service import SettingsService
@@ -26,13 +27,14 @@ _report_service: ReportService | None = None
 _chat_service: ChatService | None = None
 _crawl_service: CrawlService | None = None
 _settings_service: SettingsService | None = None
+_match_service: MatchService | None = None
 
 
 async def init_services(config: AppConfig, db_path: str) -> None:
     """Initialize all service singletons."""
     global _config, _llm_client, _company_service, _job_service
     global _favorite_service, _resume_service, _report_service
-    global _chat_service, _crawl_service, _settings_service
+    global _chat_service, _crawl_service, _settings_service, _match_service
 
     _config = config
     _llm_client = LLMClient(config.llm)
@@ -52,6 +54,7 @@ async def init_services(config: AppConfig, db_path: str) -> None:
     _chat_service = ChatService(_llm_client)
     _crawl_service = CrawlService(_company_service, config)
     _settings_service = SettingsService()
+    _match_service = MatchService(db_path)
 
 
 async def get_database() -> AsyncGenerator[aiosqlite.Connection, None]:
@@ -93,3 +96,7 @@ def get_crawl_service() -> CrawlService:
 
 def get_settings_service() -> SettingsService:
     return _settings_service
+
+
+def get_match_service() -> MatchService:
+    return _match_service

@@ -115,6 +115,13 @@ class BaseAgent:
     max_turns: int = 32
     use_memory: bool = True
     max_history_tokens: Optional[int] = None
+    # Tools that end the turn. Calling one routes to END instead of back to
+    # chat, which lets an agent declare an explicit exit point (see the
+    # ``final_answer`` pattern) rather than ending on "no tool calls".
+    terminal_tools: frozenset[str] = frozenset()
+    # Stream tokens from the model. Required for callback-driven UIs; agents
+    # that only consume the final result leave it off.
+    streaming: bool = False
 
     def __init__(
         self,
@@ -147,6 +154,8 @@ class BaseAgent:
             self.llm_service.set_model(model)
         if self.tools:
             self.llm_service.bind_tools(list(self.tools))
+        if self.streaming:
+            self.llm_service.enable_streaming()
 
         self.tools_by_name: dict[str, BaseTool] = {tool.name: tool for tool in self.tools}
         self._graph: Optional[CompiledStateGraph] = None
@@ -283,12 +292,42 @@ class BaseAgent:
 
             return ToolMessage(content=result, name=tool_name, tool_call_id=tool_call["id"])
 
-        if len(tool_calls) == 1:
-            outputs = [await _execute_tool(tool_calls[0])]
-        else:
-            outputs = list(await asyncio.gather(*[_execute_tool(tc) for tc in tool_calls]))
+        terminal = [tc for tc in tool_calls if tc["name"] in self.terminal_tools]
+        others = [tc for tc in tool_calls if tc["name"] not in self.terminal_tools]
 
-        return Command(update={"messages": outputs}, goto="chat")
+        # A terminal tool only ends the turn when the model committed to it
+        # alone. Mixed with real work it means the model called it prematurely,
+        # so run the work and let it decide again with those results in hand.
+        deferred: list[ToolMessage] = []
+        if terminal and others:
+            logger.warning(
+                "terminal_tool_deferred",
+                agent=self.name,
+                terminal=[tc["name"] for tc in terminal],
+                alongside=[tc["name"] for tc in others],
+            )
+            to_run = others
+            goto = "chat"
+            # Every tool_call needs a matching ToolMessage or the provider
+            # rejects the next request, so answer the deferred call too.
+            deferred = [
+                ToolMessage(
+                    content="skipped: call this alone once the other tool results are in",
+                    name=tc["name"],
+                    tool_call_id=tc["id"],
+                )
+                for tc in terminal
+            ]
+        else:
+            to_run = tool_calls
+            goto = END if terminal else "chat"
+
+        if len(to_run) == 1:
+            outputs = [await _execute_tool(to_run[0])]
+        else:
+            outputs = list(await asyncio.gather(*[_execute_tool(tc) for tc in to_run]))
+
+        return Command(update={"messages": outputs + deferred}, goto=goto)
 
     async def create_graph(self) -> Optional[CompiledStateGraph]:
         """Build and compile the agent graph, reusing it on later calls.

@@ -59,6 +59,7 @@ class LLMService:
         self._llm: Any = None  # BaseChatModel pre-bind_tools, Runnable after
         self._current_model_index: int = 0
         self._bound_tools: List = []
+        self._streaming: bool = False
 
         all_names = LLMRegistry.get_all_names()
         try:
@@ -178,6 +179,25 @@ class LLMService:
         logger.info("llm_service_model_set", model=model_name)
         return self
 
+    def enable_streaming(self) -> "LLMService":
+        """Rebuild the default model with token streaming turned on.
+
+        Added on top of the template. ``call()`` uses ``ainvoke``, which issues a
+        non-streaming request unless the model itself is built with
+        ``streaming=True`` — and without that, ``on_llm_new_token`` never fires,
+        so callback-based UIs receive nothing until the call completes.
+
+        Returns:
+            Self for method chaining.
+        """
+        model_name = LLMRegistry.get_all_names()[self._current_model_index]
+        self._llm = LLMRegistry.get(model_name, streaming=True)
+        if self._bound_tools:
+            self._llm = self._llm.bind_tools(self._bound_tools)
+        self._streaming = True
+        logger.info("llm_service_streaming_enabled", model=model_name)
+        return self
+
     def bind_tools(self, tools: List) -> "LLMService":
         """Bind tools to the default LLM instance.
 
@@ -256,7 +276,11 @@ class LLMService:
                 to_model=next_entry["name"],
             )
             self._current_model_index = next_index
-            self._llm = next_entry["llm"]
+            self._llm = (
+                LLMRegistry.get(next_entry["name"], streaming=True)
+                if self._streaming
+                else next_entry["llm"]
+            )
             if self._bound_tools:
                 self._llm = self._llm.bind_tools(self._bound_tools)
             logger.info("model_switched", new_model=next_entry["name"], new_index=next_index)

@@ -65,7 +65,9 @@ def list_agents() -> list[str]:
 
 
 from app.agents.crawler import crawler_agent  # noqa: E402
+from app.agents.matcher import matcher_agent  # noqa: E402
 
 register(crawler_agent)
+register(matcher_agent)
 
-__all__ = ["BaseAgent", "crawler_agent", "get_agent", "list_agents", "register"]
+__all__ = ["BaseAgent", "crawler_agent", "matcher_agent", "get_agent", "list_agents", "register"]

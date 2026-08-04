@@ -1,0 +1,337 @@
+"""Streaming plumbing for the match agent.
+
+Two pieces:
+
+``FinalAnswerExtractor``
+    The deliverable is the ``answer`` argument of the ``final_answer`` tool
+    call, which arrives as a *partial JSON string* (``{"answer":"根``…). To
+    stream it as text we decode that value incrementally, handling escapes and
+    ``\\uXXXX`` sequences that straddle chunk boundaries.
+
+``MatchStreamBridge``
+    A LangChain callback handler that turns model/tool callbacks into UI events
+    on an ``asyncio.Queue``, the same pattern ``app/crawl/callbacks.py`` uses.
+    ``BaseAgent.get_stream_response`` only yields assistant text, which cannot
+    express the tool timeline this page shows.
+"""
+
+import asyncio
+import time
+from typing import Any, Optional
+from uuid import UUID
+
+from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import LLMResult
+
+from app.agents.match_tools import FINAL_ANSWER_TOOL
+from app.core.logging import logger
+
+_ESCAPES = {
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "b": "\b",
+    "f": "\f",
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+}
+
+# Tool name → what the user sees while it runs.
+TOOL_LABELS = {
+    "search_jobs": "检索岗位",
+    "count_jobs": "统计岗位数量",
+    "get_job_detail": "读取岗位详情",
+    "get_resume_profile": "读取简历",
+    "list_favorites": "读取收藏岗位",
+}
+
+
+class FinalAnswerExtractor:
+    """Incrementally decode one string field out of a partial JSON object."""
+
+    def __init__(self, key: str = "answer"):
+        """Start an extractor for ``key``."""
+        self._needle = f'"{key}"'
+        self._buf = ""
+        self._pos = 0
+        self._state = "seek_key"
+        self._escape = False
+        self._unicode: Optional[str] = None
+        self._pending_high: Optional[int] = None
+        self.done = False
+
+    def feed(self, delta: str) -> str:
+        """Consume the next raw argument fragment.
+
+        Args:
+            delta: Newly arrived characters of the JSON arguments string.
+
+        Returns:
+            Newly decoded text of the target field, possibly empty.
+        """
+        if self.done or not delta:
+            return ""
+
+        self._buf += delta
+        out: list[str] = []
+
+        while self._pos < len(self._buf):
+            if self._state == "seek_key":
+                idx = self._buf.find(self._needle, self._pos)
+                if idx < 0:
+                    # Retain a tail long enough to hold a key split across chunks.
+                    self._pos = max(self._pos, len(self._buf) - len(self._needle))
+                    break
+                self._pos = idx + len(self._needle)
+                self._state = "seek_colon"
+                continue
+
+            char = self._buf[self._pos]
+
+            if self._state == "seek_colon":
+                self._pos += 1
+                if char == ":":
+                    self._state = "seek_quote"
+                continue
+
+            if self._state == "seek_quote":
+                self._pos += 1
+                if char == '"':
+                    self._state = "in_value"
+                continue
+
+            # in_value
+            if self._unicode is not None:
+                needed = 4 - len(self._unicode)
+                chunk = self._buf[self._pos : self._pos + needed]
+                self._unicode += chunk
+                self._pos += len(chunk)
+                if len(self._unicode) < 4:
+                    break  # wait for the rest of the escape
+                out.append(self._decode_unicode(self._unicode))
+                self._unicode = None
+                continue
+
+            if self._escape:
+                self._escape = False
+                self._pos += 1
+                if char == "u":
+                    self._unicode = ""
+                else:
+                    out.append(_ESCAPES.get(char, char))
+                continue
+
+            if char == "\\":
+                self._escape = True
+                self._pos += 1
+                continue
+
+            if char == '"':
+                self._pos += 1
+                self._state = "done"
+                self.done = True
+                break
+
+            out.append(char)
+            self._pos += 1
+
+        return "".join(out)
+
+    def _decode_unicode(self, hex4: str) -> str:
+        """Decode one ``\\uXXXX`` escape, pairing surrogates."""
+        try:
+            code = int(hex4, 16)
+        except ValueError:
+            return ""
+
+        if 0xD800 <= code <= 0xDBFF:
+            self._pending_high = code
+            return ""
+
+        if 0xDC00 <= code <= 0xDFFF and self._pending_high is not None:
+            combined = 0x10000 + ((self._pending_high - 0xD800) << 10) + (code - 0xDC00)
+            self._pending_high = None
+            return chr(combined)
+
+        self._pending_high = None
+        return chr(code)
+
+
+class MatchStreamBridge(AsyncCallbackHandler):
+    """Translate agent callbacks into UI events on a queue.
+
+    Attributes:
+        narration: Assistant text emitted between tool calls.
+        final_answer: The decoded ``final_answer`` payload.
+        tool_events: The turn's tool timeline, in start order.
+    """
+
+    def __init__(self, queue: asyncio.Queue):
+        """Bridge into ``queue``; ``None`` is pushed when the turn ends."""
+        self.queue = queue
+        self.narration = ""
+        self.final_answer = ""
+        self.tool_events: list[dict] = []
+
+        self._extractor = FinalAnswerExtractor()
+        self._tool_runs: dict[UUID, dict] = {}
+        # Tool-call arguments arrive as deltas keyed by index within one
+        # assistant message, not by call id.
+        self._arg_index_names: dict[int, str] = {}
+
+    def _emit(self, event: str, data: dict) -> None:
+        """Queue one event for the SSE generator."""
+        self.queue.put_nowait({"event": event, "data": data})
+
+    async def on_chat_model_start(
+        self, serialized: dict[str, Any], messages: list[list[BaseMessage]], **kwargs: Any
+    ) -> None:
+        """Reset per-call argument tracking."""
+        self._arg_index_names.clear()
+
+    async def on_llm_new_token(self, token: str, *, chunk: Any = None, **kwargs: Any) -> None:
+        """Stream narration text and tool-call argument deltas."""
+        # The callback delivers a ChatGenerationChunk, which wraps the
+        # AIMessageChunk that actually carries tool_call_chunks.
+        message = getattr(chunk, "message", chunk) if chunk is not None else None
+        tool_chunks = getattr(message, "tool_call_chunks", None) if message is not None else None
+
+        if tool_chunks:
+            for tc in tool_chunks:
+                index = tc.get("index") or 0
+                name = tc.get("name")
+                if name:
+                    self._arg_index_names[index] = name
+
+                resolved = self._arg_index_names.get(index, name)
+                args_delta = tc.get("args") or ""
+                if not args_delta:
+                    continue
+
+                if resolved == FINAL_ANSWER_TOOL:
+                    text = self._extractor.feed(args_delta)
+                    if text:
+                        self.final_answer += text
+                        self._emit("final_delta", {"content": text})
+                elif resolved:
+                    self._emit("tool_args", {"name": resolved, "delta": args_delta})
+            return
+
+        if token:
+            self.narration += token
+            self._emit("narration", {"content": token})
+
+    async def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+        """Fall back to the whole argument blob when nothing streamed.
+
+        Some providers deliver tool-call arguments in one piece at the end
+        rather than as deltas; without this the final answer would never reach
+        the client.
+        """
+        if self.final_answer or not response.generations:
+            return
+
+        message = getattr(response.generations[0][0], "message", None)
+        for call in getattr(message, "tool_calls", None) or []:
+            if call.get("name") != FINAL_ANSWER_TOOL:
+                continue
+            answer = (call.get("args") or {}).get("answer") or ""
+            if answer:
+                self.final_answer = answer
+                self._emit("final_delta", {"content": answer})
+
+    async def on_tool_start(
+        self,
+        serialized: dict[str, Any],
+        input_str: str,
+        *,
+        run_id: UUID,
+        inputs: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Open a timeline entry, skipping the terminal tool."""
+        name = (serialized or {}).get("name", "unknown")
+        if name == FINAL_ANSWER_TOOL:
+            return  # not a step the user needs to see
+
+        call_id = str(run_id)
+        entry = {
+            "call_id": call_id,
+            "name": name,
+            "label": TOOL_LABELS.get(name, name),
+            "args": inputs if inputs is not None else input_str,
+            "ok": True,
+            "summary": "",
+            "count": None,
+            "duration_ms": None,
+        }
+        self._tool_runs[run_id] = {"entry": entry, "started": time.time()}
+        self.tool_events.append(entry)
+        self._emit("tool_start", {k: entry[k] for k in ("call_id", "name", "label", "args")})
+
+    async def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any) -> None:
+        """Close a timeline entry with a short result summary."""
+        run = self._tool_runs.pop(run_id, None)
+        if run is None:
+            return
+
+        entry = run["entry"]
+        content = str(getattr(output, "content", output))
+        count = _extract_count(content)
+
+        entry["ok"] = True
+        entry["count"] = count
+        entry["summary"] = f"{count} 条" if count is not None else "完成"
+        entry["duration_ms"] = (time.time() - run["started"]) * 1000
+
+        self._emit(
+            "tool_end",
+            {
+                "call_id": entry["call_id"],
+                "ok": True,
+                "summary": entry["summary"],
+                "count": count,
+                "duration_ms": entry["duration_ms"],
+            },
+        )
+
+    async def on_tool_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
+        """Mark a timeline entry as failed."""
+        run = self._tool_runs.pop(run_id, None)
+        if run is None:
+            return
+
+        entry = run["entry"]
+        entry["ok"] = False
+        entry["summary"] = str(error)[:200]
+        entry["duration_ms"] = (time.time() - run["started"]) * 1000
+
+        logger.warning("match_tool_failed", tool=entry["name"], error=str(error))
+        self._emit(
+            "tool_end",
+            {
+                "call_id": entry["call_id"],
+                "ok": False,
+                "summary": entry["summary"],
+                "duration_ms": entry["duration_ms"],
+            },
+        )
+
+
+def _extract_count(payload: str) -> Optional[int]:
+    """Pull a result count out of a tool's JSON payload, if present."""
+    import json
+
+    try:
+        data = json.loads(payload)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for key in ("returned", "count", "total_matched"):
+        value = data.get(key)
+        if isinstance(value, int):
+            return value
+    return None
