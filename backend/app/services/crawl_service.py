@@ -126,7 +126,7 @@ class CrawlService:
                 logger.info(f"[crawl] Using cached code for company={company_id} ({len(cached_code)} chars)")
                 try:
                     raw_jobs = await loop.run_in_executor(
-                        None, run_cached_crawler, cached_code, cancel_event
+                        None, run_cached_crawler, cached_code, cancel_event, company_id, task_id
                     )
                     cache_hit = True
                     logger.info(f"[crawl] Cached crawler succeeded: {len(raw_jobs)} jobs")
@@ -146,6 +146,7 @@ class CrawlService:
                     raw_jobs, new_code = await crawler_agent.crawl(
                         career_url,
                         session_id=task_id,
+                        company_id=company_id,
                         cancel_event=cancel_event,
                     )
 

@@ -164,12 +164,27 @@ async def store_jobs(
 def run_cached_crawler(
     code: str,
     cancel_event: threading.Event | None = None,
+    company_id: str | None = None,
+    task_id: str | None = None,
 ) -> list[dict]:
     """Run cached crawler code directly in sandbox, skip the agent.
 
-    Returns the list of crawled job dicts.
+    Args:
+        code: The stored crawler script.
+        cancel_event: Checked before starting.
+        company_id: Names/labels the container, e.g. ``jm-cached-bilibili-7719674d``.
+        task_id: Crawl task ID, used for the name suffix and the task label.
+
+    Returns:
+        The list of crawled job dicts.
     """
-    from .sandbox import SandboxManager
+    from .sandbox import (
+        LABEL_COMPANY,
+        LABEL_MODE,
+        LABEL_TASK,
+        SandboxManager,
+        build_sandbox_name,
+    )
 
     if cancel_event and cancel_event.is_set():
         return []
@@ -177,7 +192,14 @@ def run_cached_crawler(
     # A fresh sandbox avoids stale container references; the context manager
     # removes it on the way out, keeping it only when the run raised and
     # KEEP_SANDBOX_ON_FAILURE is set.
-    with SandboxManager() as sandbox:
+    with SandboxManager(
+        name=build_sandbox_name("cached", company_id, task_id),
+        labels={
+            LABEL_MODE: "cached",
+            LABEL_COMPANY: company_id or "",
+            LABEL_TASK: task_id or "",
+        },
+    ) as sandbox:
         sandbox.ensure_sandbox()
         sandbox.write_file("/home/user/crawler.py", code)
         result = sandbox.run_command("python /home/user/crawler.py", timeout=300)

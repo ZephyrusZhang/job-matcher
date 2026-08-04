@@ -1,6 +1,7 @@
 import io
 import logging
 import os
+import re
 import tarfile
 import threading
 
@@ -15,6 +16,40 @@ SANDBOX_WORKDIR = "/home/user"
 # Marks every container this project starts, so cleanup never touches
 # unrelated containers that happen to share the image.
 SANDBOX_LABEL = "job-matcher.sandbox"
+LABEL_COMPANY = "job-matcher.company"
+LABEL_TASK = "job-matcher.task"
+LABEL_MODE = "job-matcher.mode"
+
+SANDBOX_NAME_PREFIX = "jm"
+
+_NAME_SAFE = re.compile(r"[^a-zA-Z0-9_.-]+")
+
+
+def build_sandbox_name(mode: str, company_id: str | None, task_id: str | None) -> str:
+    """Build a readable, unique container name.
+
+    Produces e.g. ``jm-crawl-bytedance-0faec70f``, so ``docker ps`` shows which
+    company a container belongs to and its name maps straight back to a row in
+    ``crawl_tasks``. Docker only accepts ``[a-zA-Z0-9][a-zA-Z0-9_.-]*``.
+
+    Args:
+        mode: What is running — ``crawl`` for the agent, ``cached`` for a
+            stored script.
+        company_id: Company being crawled, omitted when unknown.
+        task_id: Crawl task ID; only its first 8 characters are used.
+
+    Returns:
+        A sanitized container name.
+    """
+    parts = [SANDBOX_NAME_PREFIX, mode]
+    if company_id:
+        parts.append(company_id)
+    if task_id:
+        parts.append(task_id.replace("-", "")[:8])
+    name = "-".join(p for p in parts if p)
+    name = _NAME_SAFE.sub("-", name).strip("-_.")
+    return name or f"{SANDBOX_NAME_PREFIX}-sandbox"
+
 
 # When a crawl fails, keep its container so the generated crawler.py and any
 # partial output.json can still be inspected. Successful crawls are always
@@ -35,9 +70,38 @@ class SandboxManager:
     crawl (and each cached-script run) starts one, and nothing removed them.
     """
 
-    def __init__(self):
+    def __init__(self, name: str | None = None, labels: dict[str, str] | None = None):
+        """Create a manager, optionally naming the container it will start.
+
+        Args:
+            name: Container name. Falls back to Docker's random name when
+                omitted.
+            labels: Extra labels merged onto the container.
+        """
         self.client: docker.DockerClient | None = None
         self.container = None
+        self.name = name
+        self.labels = dict(labels or {})
+
+    def configure(self, name: str | None = None, labels: dict[str, str] | None = None) -> "SandboxManager":
+        """Set the name/labels for the *next* container this manager starts.
+
+        Needed because the agent shares one module-level manager across crawls:
+        the container is created lazily on the first tool call, so a crawl can
+        stamp its identity here before the agent starts working.
+
+        Args:
+            name: Container name for the next container.
+            labels: Extra labels for the next container.
+
+        Returns:
+            Self, for chaining.
+        """
+        if name is not None:
+            self.name = name
+        if labels:
+            self.labels.update(labels)
+        return self
 
     def __enter__(self) -> "SandboxManager":
         """Enter a crawl scope; the container is created lazily on first use."""
@@ -51,18 +115,39 @@ class SandboxManager:
         if self.container is not None:
             return
         self.client = docker.from_env()
+
+        if self.name:
+            self._remove_name_conflict(self.name)
+
         self.container = self.client.containers.run(
             SANDBOX_IMAGE,
             command="sleep infinity",
+            name=self.name,
             working_dir=SANDBOX_WORKDIR,
             detach=True,
             remove=True,
             mem_limit="1g",
             cpu_period=100000,
             cpu_quota=100000,
-            labels={SANDBOX_LABEL: "1"},
+            labels={SANDBOX_LABEL: "1", **self.labels},
         )
-        logger.info(f"[sandbox] started container {self.container.short_id}")
+        logger.info(f"[sandbox] started container {self.container.name} ({self.container.short_id})")
+
+    def _remove_name_conflict(self, name: str) -> None:
+        """Drop a leftover container squatting on the name we want.
+
+        Names are unique in Docker, so a collision means an earlier run of the
+        same crawl task left its container behind — safe to reclaim.
+        """
+        try:
+            existing = self.client.containers.get(name)
+        except Exception:
+            return
+        try:
+            existing.remove(force=True)
+            logger.info(f"[sandbox] removed stale container reusing name {name}")
+        except Exception as e:
+            logger.warning(f"[sandbox] could not remove stale container {name}: {e}")
 
     def write_file(self, path: str, content: str) -> dict:
         self.ensure_sandbox()
@@ -125,19 +210,19 @@ class SandboxManager:
     def kill(self):
         """Stop and remove the container. Safe to call more than once."""
         if self.container:
-            short_id = self.container.short_id
+            label = f"{self.container.name} ({self.container.short_id})"
             try:
                 # Containers are created with remove=True, so stopping is
                 # normally enough; force-remove covers a stop that times out.
                 self.container.stop(timeout=5)
-                logger.info(f"[sandbox] removed container {short_id}")
+                logger.info(f"[sandbox] removed container {label}")
             except Exception as e:
-                logger.warning(f"[sandbox] stop failed for {short_id}: {e}")
+                logger.warning(f"[sandbox] stop failed for {label}: {e}")
                 try:
                     self.container.remove(force=True)
-                    logger.info(f"[sandbox] force-removed container {short_id}")
+                    logger.info(f"[sandbox] force-removed container {label}")
                 except Exception as e2:
-                    logger.warning(f"[sandbox] force-remove failed for {short_id}: {e2}")
+                    logger.warning(f"[sandbox] force-remove failed for {label}: {e2}")
             self.container = None
         self.client = None
 
@@ -154,7 +239,7 @@ class SandboxManager:
 
         if not success and KEEP_SANDBOX_ON_FAILURE:
             logger.info(
-                f"[sandbox] keeping container {self.container.short_id} for debugging "
+                f"[sandbox] keeping container {self.container.name} for debugging "
                 f"(crawl failed; set KEEP_SANDBOX_ON_FAILURE=false to reclaim)"
             )
             self.container = None

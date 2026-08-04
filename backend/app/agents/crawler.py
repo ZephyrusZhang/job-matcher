@@ -30,6 +30,12 @@ from app.crawl.handlers import (
 )
 from app.crawl.lc_tools import CRAWL_TOOLS
 from app.crawl.prompts import build_system_prompt
+from app.crawl.sandbox import (
+    LABEL_COMPANY,
+    LABEL_MODE,
+    LABEL_TASK,
+    build_sandbox_name,
+)
 from app.crawl.tools import (
     browser_mgr,
     sandbox_mgr,
@@ -129,6 +135,7 @@ class CrawlerAgent(BaseAgent):
         career_url: str,
         session_id: str,
         *,
+        company_id: Optional[str] = None,
         cancel_event: Optional[threading.Event] = None,
         verbose: bool = True,
         log_dir: str = "logs",
@@ -140,6 +147,8 @@ class CrawlerAgent(BaseAgent):
         Args:
             career_url: The careers page to crawl.
             session_id: LangGraph thread ID; reuse it to resume a crawl.
+            company_id: Names/labels the sandbox container, e.g.
+                ``jm-crawl-bytedance-0faec70f``.
             cancel_event: Checked between graph nodes for cooperative cancellation.
             verbose: Whether the console handler prints message previews.
             log_dir: Directory for the JSONL event log.
@@ -150,6 +159,17 @@ class CrawlerAgent(BaseAgent):
         """
         bridge = CrawlEventBridge(handlers=[ConsoleHandler(verbose=verbose), FileHandler(log_dir=log_dir)])
         cancelled = False
+
+        # Stamp identity before the first tool call — the shared sandbox
+        # manager creates its container lazily, so this is what names it.
+        sandbox_mgr.configure(
+            name=build_sandbox_name("crawl", company_id, session_id),
+            labels={
+                LABEL_MODE: "crawl",
+                LABEL_COMPANY: company_id or "",
+                LABEL_TASK: session_id,
+            },
+        )
 
         try:
             await self.run(
