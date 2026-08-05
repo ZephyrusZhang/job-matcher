@@ -13,7 +13,19 @@ from typing import Any
 
 from app.agents.match_tools import FINAL_ANSWER_TOOL, MATCH_TOOLS, current_turn
 from app.core.langgraph import BaseAgent
+from app.core.logging import logger
+from app.schemas.agent import Message
 from app.schemas.match import MatchScope
+from app.utils.graph import count_tokens
+
+# The most recent exchanges are what the model is actively reasoning over, so
+# they are never touched.
+KEEP_RECENT_MESSAGES = 12
+
+# Older tool payloads keep a readable head rather than being replaced outright:
+# a job's title and opening lines still carry most of what a later comparison
+# needs, unlike the crawler's browser dumps which are worthless once past.
+COMPACTED_HEAD_CHARS = 600
 
 # The fixed taxonomies stored in the database, so the model filters with values
 # that actually exist rather than inventing English equivalents.
@@ -83,9 +95,12 @@ class MatchAgent(BaseAgent):
     tools = MATCH_TOOLS
     terminal_tools = frozenset({FINAL_ANSWER_TOOL})
     max_turns = 12
-    # Tool payloads are compact but a long conversation still adds up; well
-    # above the framework default of 8000.
-    max_history_tokens = 32000
+    # History budget only — *not* the reply length cap, which is
+    # `settings.MAX_TOKENS` over in `services/llm/registry.py`. The provider's
+    # context window is ~1M; reading twenty full job descriptions in one turn
+    # runs to roughly 80k tokens, so this leaves room for several times that
+    # before `compact_history` has to start shortening anything.
+    max_history_tokens = 400_000
     # mem0 needs an embeddings endpoint the configured provider does not expose.
     use_memory = False
     # The UI renders tokens as they arrive, including the final_answer payload.
@@ -114,6 +129,68 @@ class MatchAgent(BaseAgent):
             categories="、".join(CATEGORIES),
             job_types="、".join(JOB_TYPES),
         )
+
+    def compact_history(self, messages: list, system_prompt: str) -> list:
+        """Shorten old tool results instead of dropping messages.
+
+        The framework default trims with ``strategy="last"`` and
+        ``start_on="human"``. A turn has exactly one human message — the
+        question — at the very front, so once the accumulated tool results
+        alone exceed the budget there is no human message left for the window
+        to start on and the trimmer returns *nothing*. The model then sees only
+        the system prompt, greets the user as if the conversation were new, and
+        re-runs the tools it already ran, until ``max_turns`` cuts it off with
+        no answer.
+
+        Dropping messages is not an option either: an assistant message carries
+        the ``tool_calls`` its ``ToolMessage`` replies answer, and separating
+        them makes the provider reject the request. So every message is kept
+        and only the payload of older tool results is shortened.
+
+        Args:
+            messages: The current conversation state.
+            system_prompt: The system prompt to prepend.
+
+        Returns:
+            The messages to send, system prompt first.
+        """
+        system = [Message(role="system", content=system_prompt)]
+
+        total = count_tokens(messages)
+        if total <= self.max_history_tokens:
+            return system + messages
+
+        compacted = []
+        cutoff = len(messages) - KEEP_RECENT_MESSAGES
+        shortened = 0
+
+        for index, message in enumerate(messages):
+            if index >= cutoff or message.__class__.__name__ != "ToolMessage":
+                compacted.append(message)
+                continue
+
+            content = str(message.content or "")
+            if len(content) <= COMPACTED_HEAD_CHARS:
+                compacted.append(message)
+                continue
+
+            head = content[:COMPACTED_HEAD_CHARS]
+            compacted.append(
+                message.model_copy(
+                    update={"content": f"{head}\n\n[早期结果已截断，原始 {len(content)} 字符]"}
+                )
+            )
+            shortened += 1
+
+        logger.info(
+            "match_history_compacted",
+            original_tokens=total,
+            compacted_tokens=count_tokens(compacted),
+            budget=self.max_history_tokens,
+            messages=len(messages),
+            shortened=shortened,
+        )
+        return system + compacted
 
 
 matcher_agent = MatchAgent()

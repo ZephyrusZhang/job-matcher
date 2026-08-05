@@ -17,8 +17,12 @@ except KeyError:
     _TIKTOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
 
 
-def _count_tokens_tiktoken(messages: list) -> int:
-    """Count tokens locally with tiktoken — no API call needed."""
+def count_tokens(messages: list) -> int:
+    """Count tokens locally with tiktoken — no API call needed.
+
+    Accepts both plain dicts and LangChain messages, so agents can size their
+    own history without a round trip.
+    """
     num_tokens = 0
     for message in messages:
         num_tokens += 4  # per-message role/name overhead
@@ -94,7 +98,7 @@ def prepare_messages(messages: list[Message], system_prompt: str, max_tokens: in
         trimmed_messages = _trim_messages(
             dump_messages(messages),
             strategy="last",
-            token_counter=_count_tokens_tiktoken,
+            token_counter=count_tokens,
             max_tokens=budget,
             start_on="human",
             include_system=False,

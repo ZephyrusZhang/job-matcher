@@ -102,6 +102,12 @@ Two things make it different from the crawler:
 
 Scope is **not** a tool argument — `app/agents/match_tools.py` pins it in a `ContextVar` per turn, so the model cannot search outside what the user selected. Tools return compressed job views (~60 tokens each) because a scope can hold ~1000 jobs; full text comes from `get_job_detail` on demand.
 
+### History compaction
+
+`MatchAgent` overrides `compact_history` for the same reason `CrawlerAgent` does, and the failure it prevents is worth knowing. The framework default (`utils/graph.py::prepare_messages`) trims with `strategy="last"` and `start_on="human"`. A turn has exactly one human message — the question — at the very front, so once the accumulated tool results alone exceed the budget there is no human message left for the window to start on and `trim_messages` returns an **empty list**. The model then sees only the system prompt, greets the user mid-turn, and re-runs the tools it already ran until `max_turns` cuts it off with no answer. That is regression-tested in `tests/test_match_history.py`.
+
+`max_history_tokens` on an agent is the **history budget**, not the reply length cap. The reply cap is `settings.MAX_TOKENS`, which `services/llm/registry.py` passes as the model's `max_tokens` — the same setting also serves as the *default* history budget in `prepare_messages`, so raising the env var changes both. Raise the agent attribute instead.
+
 ### Embedded job cards
 
 The answer cites jobs with `:job[<uuid>]` markers, which the frontend replaces with cards. A marker alone in its own paragraph becomes a block card; one inside a sentence becomes an inline chip — the distinction exists because a block card is a `<div>` and would be illegal inside the `<p>` a paragraph renders as.

@@ -5,10 +5,17 @@ belong to the agent framework ported from the fastapi-langgraph-agent template.
 """
 
 from app.utils.graph import (
+    count_tokens,
     dump_messages,
     extract_text_content,
     prepare_messages,
     process_llm_response,
 )
 
-__all__ = ["dump_messages", "extract_text_content", "prepare_messages", "process_llm_response"]
+__all__ = [
+    "count_tokens",
+    "dump_messages",
+    "extract_text_content",
+    "prepare_messages",
+    "process_llm_response",
+]
