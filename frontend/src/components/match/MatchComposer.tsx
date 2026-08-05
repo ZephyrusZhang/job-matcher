@@ -1,7 +1,17 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { AtSign, FileText, Loader2, Send, Square, Upload, X } from "lucide-react"
+import {
+  AtSign,
+  FileText,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Send,
+  Square,
+  Upload,
+  X,
+} from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { getCompanies } from "@/lib/api/companies"
 import { apiGet } from "@/lib/api/client"
@@ -10,6 +20,13 @@ import type { MatchScope, ResumeSummary, ScopeMode } from "@/types/match"
 import type { Company } from "@/types/company"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
+
+/**
+ * How far the box grows on its own before the expand toggle is worth reaching
+ * for — roughly eight lines. Past that the composer would start eating the
+ * conversation, which is what the toggle is for.
+ */
+const AUTO_GROW_MAX_PX = 168
 
 interface MatchComposerProps {
   scope: MatchScope
@@ -34,8 +51,22 @@ export function MatchComposer({
   const [companies, setCompanies] = useState<Company[]>([])
   const [resumes, setResumes] = useState<ResumeSummary[]>([])
   const [uploading, setUploading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Size the box to its content while collapsed; when expanded a class owns
+  // the height, so the inline value has to get out of the way.
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    if (expanded) {
+      el.style.height = ""
+      return
+    }
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, AUTO_GROW_MAX_PX)}px`
+  }, [value, expanded])
 
   const loadResumes = () => {
     apiGet<ResumeSummary[]>("/api/resumes")
@@ -123,9 +154,17 @@ export function MatchComposer({
               e.preventDefault()
               submit()
             }
+            // Esc leaves the tall view without touching what was typed.
+            if (e.key === "Escape" && expanded) {
+              e.preventDefault()
+              setExpanded(false)
+            }
           }}
           placeholder="描述你的诉求，例如：帮我找上海的后端实习，偏基础架构方向"
-          className="w-full resize-none bg-transparent px-3.5 pt-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+          className={cn(
+            "w-full resize-none bg-transparent px-3.5 pt-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none",
+            expanded ? "h-[45vh] overflow-y-auto" : "overflow-y-auto",
+          )}
         />
 
         {chips.length > 0 && (
@@ -261,7 +300,25 @@ export function MatchComposer({
             </PopoverContent>
           </Popover>
 
-          <div className="ml-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setExpanded((v) => !v)
+              textareaRef.current?.focus()
+            }}
+            className="ml-auto mr-1 flex h-7 w-7 items-center justify-center rounded-full border border-border-subtle text-text-muted transition-colors hover:border-border-default hover:text-text-primary"
+            aria-label={expanded ? "收起输入框" : "放大输入框"}
+            aria-pressed={expanded}
+            title={expanded ? "收起输入框（Esc）" : "放大输入框"}
+          >
+            {expanded ? (
+              <Minimize2 className="h-3.5 w-3.5" />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" />
+            )}
+          </button>
+
+          <div>
             {isStreaming ? (
               <button
                 type="button"
