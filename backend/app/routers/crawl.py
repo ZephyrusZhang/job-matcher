@@ -16,7 +16,7 @@ async def trigger_crawl(
     db: aiosqlite.Connection = Depends(get_database),
     service: CrawlService = Depends(get_crawl_service),
 ):
-    task = await service.trigger(db, body.company_id)
+    task = await service.trigger(db, body.company_id, body.mode)
     return ApiResponse.ok(data=task.model_dump())
 
 

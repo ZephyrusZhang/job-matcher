@@ -2,6 +2,7 @@ import aiosqlite
 
 from app.exceptions import CompanyExistsError, CompanyNotFoundError
 from app.models import company as company_model
+from app.models import crawler_script as script_model
 from app.models import job as job_model
 from app.schemas.company import CompanyCreate, CompanyOut, CompanyUpdate
 
@@ -27,6 +28,9 @@ class CompanyService:
 
     async def get_all(self, db: aiosqlite.Connection) -> list[CompanyOut]:
         rows = await company_model.get_all_companies(db)
+        # One query for the whole table rather than a lookup per company; the
+        # settings page polls this list every 3 seconds.
+        with_scripts = await script_model.get_company_ids_with_scripts(db)
         result = []
         for row in rows:
             job_count = await job_model.get_job_count_by_company(db, row["id"])
@@ -41,6 +45,7 @@ class CompanyService:
                     last_crawled_at=last_crawled,
                     job_count=job_count,
                     crawl_status=crawl_status,
+                    has_crawler_script=row["id"] in with_scripts,
                 )
             )
         return result

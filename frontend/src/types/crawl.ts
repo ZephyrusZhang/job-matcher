@@ -1,3 +1,6 @@
+/** `agent` rewrites the crawler with the LLM; `cached` runs the stored script. */
+export type CrawlMode = 'agent' | 'cached'
+
 export interface CrawlTask {
   id: string
   company_id: string

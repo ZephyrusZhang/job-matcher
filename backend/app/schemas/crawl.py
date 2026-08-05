@@ -1,8 +1,15 @@
+from typing import Literal
+
 from pydantic import BaseModel
+
+# `agent` rewrites the crawler from scratch; `cached` runs the stored script
+# and never falls back, so a caller always gets the run it asked for.
+CrawlMode = Literal["agent", "cached"]
 
 
 class CrawlTriggerRequest(BaseModel):
     company_id: str
+    mode: CrawlMode = "agent"
 
 
 class CrawlTaskOut(BaseModel):

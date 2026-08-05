@@ -10,11 +10,16 @@ from app.agents.crawler import crawler_agent
 from app.config import AppConfig
 from app.crawl.pipeline import run_cached_crawler, store_jobs
 from app.database import get_db
-from app.exceptions import AppError, CompanyNotFoundError, CrawlInProgressError
+from app.exceptions import (
+    AppError,
+    CompanyNotFoundError,
+    CrawlerScriptNotFoundError,
+    CrawlInProgressError,
+)
 from app.models import crawl_task as task_model
 from app.models import crawler_script as script_model
 from app.schemas.common import PaginationMeta
-from app.schemas.crawl import CrawlTaskOut
+from app.schemas.crawl import CrawlMode, CrawlTaskOut
 from app.services.company_service import CompanyService
 
 logger = logging.getLogger(__name__)
@@ -36,8 +41,24 @@ class CrawlService:
         self._tasks: set[asyncio.Task] = set()
 
     async def trigger(
-        self, db: aiosqlite.Connection, company_id: str
+        self, db: aiosqlite.Connection, company_id: str, mode: CrawlMode = "agent"
     ) -> CrawlTaskOut:
+        """Start a crawl.
+
+        Args:
+            db: Open connection.
+            company_id: Company to crawl.
+            mode: ``agent`` writes a fresh crawler with the LLM; ``cached`` runs
+                the stored script. The choice is honoured exactly — an ``agent``
+                run ignores any stored script, and a ``cached`` run never
+                silently escalates to the agent.
+
+        Raises:
+            CrawlInProgressError: When a crawl is already running.
+            CompanyNotFoundError: When the company does not exist.
+            CrawlerScriptNotFoundError: When ``cached`` is asked for and no
+                script is stored.
+        """
         if await task_model.has_active_task(db, company_id):
             raise CrawlInProgressError()
 
@@ -48,12 +69,16 @@ class CrawlService:
         if not career_url:
             raise CompanyNotFoundError()
 
-        # Check for cached crawler script
-        script_row = await script_model.get_script(db, company_id)
-        cached_code = script_row["code"] if script_row else None
+        cached_code: str | None = None
+        if mode == "cached":
+            script_row = await script_model.get_script(db, company_id)
+            if not script_row:
+                raise CrawlerScriptNotFoundError()
+            cached_code = script_row["code"]
+
         logger.info(
-            f"Trigger crawl: company={company_id}, "
-            f"cached_code={'yes (' + str(len(cached_code)) + ' chars)' if cached_code else 'no'}"
+            f"Trigger crawl: company={company_id}, mode={mode}, "
+            f"cached_code={str(len(cached_code)) + ' chars' if cached_code else 'not used'}"
         )
 
         task_id = str(uuid.uuid4())
@@ -122,21 +147,17 @@ class CrawlService:
             cache_hit = False
 
             if cached_code:
-                # Try cached code first
                 logger.info(f"[crawl] Using cached code for company={company_id} ({len(cached_code)} chars)")
-                try:
-                    raw_jobs = await loop.run_in_executor(
-                        None, run_cached_crawler, cached_code, cancel_event, company_id, task_id
-                    )
-                    cache_hit = True
-                    logger.info(f"[crawl] Cached crawler succeeded: {len(raw_jobs)} jobs")
-                except Exception as e:
-                    logger.warning(f"[crawl] Cached crawler FAILED for company={company_id}: {e}")
-            else:
-                logger.info(f"[crawl] No cached code for company={company_id}")
+                raw_jobs = await loop.run_in_executor(
+                    None, run_cached_crawler, cached_code, cancel_event, company_id, task_id
+                )
+                cache_hit = True
+                logger.info(f"[crawl] Cached crawler succeeded: {len(raw_jobs)} jobs")
 
             if not cache_hit and not cancel_event.is_set():
-                # No cached code, or cached code failed → run the full agent.
+                # `cached` never reaches here: a failure there raises and the
+                # task is marked failed, because escalating to the agent behind
+                # the user's back is the opposite of what they asked for.
                 # task_id doubles as the LangGraph thread_id, so a crawl's
                 # conversation is checkpointed and inspectable per task.
                 logger.info(f"Running agent crawler for company={company_id}")

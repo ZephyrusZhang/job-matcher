@@ -26,3 +26,13 @@ async def delete_script(db: aiosqlite.Connection, company_id: str) -> bool:
     )
     await db.commit()
     return cursor.rowcount > 0
+
+
+async def get_company_ids_with_scripts(db: aiosqlite.Connection) -> set[str]:
+    """Company ids that have a stored crawler script.
+
+    One query for the whole list, so rendering the settings table does not fan
+    out into a lookup per company.
+    """
+    async with db.execute("SELECT company_id FROM crawler_scripts") as cursor:
+        return {row["company_id"] for row in await cursor.fetchall()}

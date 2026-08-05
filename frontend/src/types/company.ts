@@ -6,6 +6,8 @@ export interface Company {
   last_crawled_at: string | null
   job_count: number
   crawl_status: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  /** Whether a generated script is stored — gates the 'run existing' option. */
+  has_crawler_script: boolean
 }
 
 export interface CompanyCreate {

@@ -21,11 +21,13 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageContainer } from "@/components/layout/PageContainer"
-import { Plus, Trash2, Play, Square, Pencil, X, Check, Loader2, Code2 } from "lucide-react"
+import { Plus, Trash2, Square, Pencil, X, Check, Code2 } from "lucide-react"
 import type { Company, CompanyCreate } from "@/types/company"
 import { getCompanies, createCompany, updateCompany, deleteCompany } from "@/lib/api/companies"
 import { triggerCrawl, cancelCrawlTask, getCrawlTasks } from "@/lib/api/crawl"
+import type { CrawlMode } from "@/types/crawl"
 import { CrawlerScriptEditor } from "@/components/settings/CrawlerScriptEditor"
+import { CrawlTriggerButton } from "@/components/settings/CrawlTriggerButton"
 import { ReadOnlyOverlay } from "@/components/common/ReadOnlyOverlay"
 import { toast } from "@/components/ui/toast"
 import { confirmDialog } from "@/components/ui/confirm"
@@ -211,10 +213,10 @@ function SettingsPageContent() {
     }
   }
 
-  const handleTriggerCrawl = async (companyId: string) => {
+  const handleTriggerCrawl = async (companyId: string, mode: CrawlMode) => {
     setTriggeringIds((prev) => new Set(prev).add(companyId))
     try {
-      const res = await triggerCrawl(companyId)
+      const res = await triggerCrawl(companyId, mode)
       // Store task ID for potential cancel
       setActiveTaskIds((prev) => new Map(prev).set(companyId, res.data.id))
       await loadCompanies()
@@ -430,9 +432,11 @@ function SettingsPageContent() {
                   {isCrawlActive(company) ? (
                     <Button variant="ghost" size="icon-xs" onClick={() => handleCancelCrawl(company.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10" title="停止"><Square className="size-3 fill-current" /></Button>
                   ) : (
-                    <Button variant="ghost" size="icon-xs" onClick={() => handleTriggerCrawl(company.id)} disabled={triggeringIds.has(company.id)} className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 disabled:opacity-30" title="爬取">
-                      {triggeringIds.has(company.id) ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-                    </Button>
+                    <CrawlTriggerButton
+                      hasScript={company.has_crawler_script}
+                      isTriggering={triggeringIds.has(company.id)}
+                      onTrigger={(mode) => handleTriggerCrawl(company.id, mode)}
+                    />
                   )}
                   <Button variant="ghost" size="icon-xs" onClick={() => setScriptEditorId(scriptEditorId === company.id ? null : company.id)} className={`hover:bg-neutral-800 ${scriptEditorId === company.id ? "text-blue-400" : "text-text-secondary hover:text-text-primary"}`} title="爬虫代码"><Code2 className="size-3.5" /></Button>
                   <Button variant="ghost" size="icon-xs" onClick={() => startEditing(company)} className="text-text-secondary hover:text-text-primary hover:bg-neutral-800" title="编辑"><Pencil className="size-3.5" /></Button>
@@ -505,9 +509,11 @@ function SettingsPageContent() {
                             {isCrawlActive(company) ? (
                               <Button variant="ghost" size="icon-xs" onClick={() => handleCancelCrawl(company.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10" title="停止爬取"><Square className="size-3 fill-current" /></Button>
                             ) : (
-                              <Button variant="ghost" size="icon-xs" onClick={() => handleTriggerCrawl(company.id)} disabled={triggeringIds.has(company.id)} className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 disabled:opacity-30" title="手动触发爬取">
-                                {triggeringIds.has(company.id) ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-                              </Button>
+                              <CrawlTriggerButton
+                                hasScript={company.has_crawler_script}
+                                isTriggering={triggeringIds.has(company.id)}
+                                onTrigger={(mode) => handleTriggerCrawl(company.id, mode)}
+                              />
                             )}
                             <Button variant="ghost" size="icon-xs" onClick={() => setScriptEditorId(scriptEditorId === company.id ? null : company.id)} className={`hover:bg-neutral-800 ${scriptEditorId === company.id ? "text-blue-400" : "text-text-secondary hover:text-text-primary"}`} title="爬虫代码"><Code2 className="size-3.5" /></Button>
                             <Button variant="ghost" size="icon-xs" onClick={() => startEditing(company)} className="text-text-secondary hover:text-text-primary hover:bg-neutral-800" title="编辑"><Pencil className="size-3.5" /></Button>

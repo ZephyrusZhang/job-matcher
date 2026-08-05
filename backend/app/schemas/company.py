@@ -22,3 +22,6 @@ class CompanyOut(BaseModel):
     last_crawled_at: str | None = None
     job_count: int = 0
     crawl_status: str = "idle"  # idle / pending / running / completed / failed
+    # Whether a generated crawler script is stored, so the UI knows if
+    # "run the existing script" is an option at all.
+    has_crawler_script: bool = False

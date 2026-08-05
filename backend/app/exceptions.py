@@ -50,3 +50,8 @@ class CompanyNotFoundError(AppError):
 class CompanyExistsError(AppError):
     def __init__(self):
         super().__init__("COMPANY_EXISTS", "公司ID已存在", 409)
+
+
+class CrawlerScriptNotFoundError(AppError):
+    def __init__(self):
+        super().__init__("CRAWLER_SCRIPT_NOT_FOUND", "该公司还没有已保存的爬虫脚本", 404)
