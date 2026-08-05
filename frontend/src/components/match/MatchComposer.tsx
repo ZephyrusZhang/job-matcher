@@ -52,8 +52,19 @@ export function MatchComposer({
   const [resumes, setResumes] = useState<ResumeSummary[]>([])
   const [uploading, setUploading] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  // Height the composer occupied while collapsed. Expanding lifts the box out
+  // of the flow so it floats over the conversation; without holding its former
+  // height the row would collapse and the messages above would jump.
+  const [reservedHeight, setReservedHeight] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const toggleExpanded = () => {
+    if (!expanded) setReservedHeight(rootRef.current?.offsetHeight ?? null)
+    setExpanded((v) => !v)
+    textareaRef.current?.focus()
+  }
 
   // Size the box to its content while collapsed; when expanded a class owns
   // the height, so the inline value has to get out of the way.
@@ -142,8 +153,21 @@ export function MatchComposer({
   }
 
   return (
-    <div className="border-t border-border-subtle bg-bg-primary px-4 py-3">
-      <div className="mx-auto w-full max-w-3xl rounded-lg border border-border-subtle bg-bg-secondary focus-within:border-border-default">
+    <div
+      ref={rootRef}
+      className="relative bg-bg-primary px-4 py-3"
+      style={expanded && reservedHeight ? { minHeight: reservedHeight } : undefined}
+    >
+      <div
+        className={cn(
+          "w-full rounded-lg border border-border-subtle bg-bg-secondary focus-within:border-border-default",
+          expanded
+            ? // Anchored to the bottom and grown upward, so the conversation
+              // behind it keeps its size instead of being squeezed.
+              "absolute bottom-3 left-1/2 z-20 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 shadow-2xl"
+            : "mx-auto max-w-3xl",
+        )}
+      >
         <textarea
           ref={textareaRef}
           rows={2}
@@ -302,10 +326,7 @@ export function MatchComposer({
 
           <button
             type="button"
-            onClick={() => {
-              setExpanded((v) => !v)
-              textareaRef.current?.focus()
-            }}
+            onClick={toggleExpanded}
             className="ml-auto mr-1 flex h-7 w-7 items-center justify-center rounded-full border border-border-subtle text-text-muted transition-colors hover:border-border-default hover:text-text-primary"
             aria-label={expanded ? "收起输入框" : "放大输入框"}
             aria-pressed={expanded}
