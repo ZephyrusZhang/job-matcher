@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Star, ExternalLink, MapPin, ChevronDown } from "lucide-react"
+import { Star, ExternalLink, MapPin } from "lucide-react"
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -39,15 +39,11 @@ function DetailContent({
   isLoading,
   isFavorited,
   onToggleFavorite,
-  isMobile,
-  onClose,
 }: {
   job: Job | null
   isLoading: boolean
   isFavorited: boolean
   onToggleFavorite: (jobId: string) => void
-  isMobile: boolean
-  onClose: () => void
 }) {
   if (isLoading) {
     return (
@@ -70,21 +66,12 @@ function DetailContent({
 
   return (
     <>
-      {/* Mobile drag handle */}
-      {isMobile && (
-        <div className="flex justify-center pt-2 pb-0 shrink-0">
-          <button onClick={onClose} className="p-1 cursor-pointer">
-            <ChevronDown className="h-5 w-5 text-neutral-600" />
-          </button>
-        </div>
-      )}
-
-      {/* Header */}
-      <SheetHeader className="p-5 sm:p-6 pb-0">
+      {/* Header. Right padding clears the close button in the corner. */}
+      <DialogHeader className="p-5 pb-0 pr-12 sm:p-6 sm:pb-0 sm:pr-12">
         <p className="text-xs text-text-secondary">{job.company.name}</p>
-        <SheetTitle className="text-base sm:text-lg font-medium text-text-primary">
+        <DialogTitle className="text-base sm:text-lg font-medium text-text-primary">
           {job.title}
-        </SheetTitle>
+        </DialogTitle>
         <div className="flex items-center gap-2 text-sm text-text-secondary flex-wrap">
           {job.location && job.location.length > 0 && (
             <span className="flex items-center gap-1">
@@ -99,7 +86,7 @@ function DetailContent({
             </>
           )}
         </div>
-      </SheetHeader>
+      </DialogHeader>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
@@ -207,15 +194,14 @@ export function JobDetailPanel({
   }, [jobId, open])
 
   return (
-    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent
-        side={isMobile ? "bottom" : "right"}
-        showCloseButton={!isMobile}
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
         className={cn(
-          "bg-neutral-950 p-0 flex flex-col overflow-hidden",
-          isMobile
-            ? "h-[64vh] rounded-t-2xl border-t border-neutral-800"
-            : "w-[85vw] md:w-[45vw] md:min-w-[500px] max-w-[800px] border-l border-neutral-800"
+          "flex flex-col overflow-hidden bg-neutral-950 p-0",
+          // Tall enough to read a full JD without the page behind it moving,
+          // but never taller than the viewport — the body scrolls instead.
+          "max-h-[85vh] max-w-[min(90vw,760px)]",
+          isMobile && "max-h-[80vh]",
         )}
       >
         <DetailContent
@@ -223,10 +209,8 @@ export function JobDetailPanel({
           isLoading={isLoading}
           isFavorited={isFavorited}
           onToggleFavorite={onToggleFavorite}
-          isMobile={isMobile}
-          onClose={onClose}
         />
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
