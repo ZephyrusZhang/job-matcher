@@ -30,7 +30,12 @@ export default function RootLayout({
   // complaining about the SSR/CSR className mismatch.
   return (
     <html lang="zh" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
-      <head>
+      {/* React inspector extensions (LocatorJS and friends) stamp their own
+          attributes onto <head> between the HTML arriving and React hydrating —
+          e.g. `data-locator-hook-status-message`. We do not control those, and
+          React reports every one as a hydration mismatch. Suppressing here
+          covers only <head>'s own attributes, not its children. */}
+      <head suppressHydrationWarning>
         {/* Runs before React hydrates to avoid a flash of the wrong theme.
             This is the *only* code that adds `dark` / `light` to <html>
             during initial paint. */}
