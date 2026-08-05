@@ -10,3 +10,7 @@ backend/data/uploads/
 **/tmp/
 **/logs/
 **/generated/
+
+# Timestamped backups written by backend/scripts/migrate_*.py before they touch
+# the tracked database. Never meant to be committed.
+*.bak.*
