@@ -77,16 +77,37 @@ async def list_messages(
     return ApiResponse.ok(data=[m.model_dump() for m in messages])
 
 
-@router.post("/match/conversations/{session_id}/messages")
+@router.post("/match/conversations/{session_id}/messages", status_code=201)
 async def send_message(
     session_id: str,
     body: SendMessageRequest,
     db: aiosqlite.Connection = Depends(get_database),
     service: MatchService = Depends(get_match_service),
 ):
-    """Send a message and stream the agent's turn back as SSE."""
+    """Submit a turn and start the agent, without streaming it.
+
+    The answer is watched through ``GET /stream``. Keeping submission separate
+    means no request that carries the question is ever retried, so the stream
+    endpoint can be reopened freely.
+    """
+    message_id = await service.submit(db, session_id, body)
+    return ApiResponse.ok(data={"message_id": message_id})
+
+
+@router.get("/match/conversations/{session_id}/stream")
+async def stream_turn(
+    session_id: str,
+    db: aiosqlite.Connection = Depends(get_database),
+    service: MatchService = Depends(get_match_service),
+):
+    """Watch the conversation's current turn as SSE.
+
+    Opens with a full snapshot of wherever the turn currently stands, so it can
+    be called at any time — first connect, after a refresh, or after a dropped
+    connection — without the client supplying an offset.
+    """
     return StreamingResponse(
-        service.stream_turn(db, session_id, body),
+        service.subscribe(db, session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -94,3 +115,14 @@ async def send_message(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/match/conversations/{session_id}/stop")
+async def stop_turn(
+    session_id: str,
+    db: aiosqlite.Connection = Depends(get_database),
+    service: MatchService = Depends(get_match_service),
+):
+    """Stop the in-flight turn. Idempotent when nothing is running."""
+    await service.stop(db, session_id)
+    return ApiResponse.ok(data=None)

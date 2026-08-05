@@ -9,13 +9,17 @@ Two pieces:
     ``\\uXXXX`` sequences that straddle chunk boundaries.
 
 ``MatchStreamBridge``
-    A LangChain callback handler that turns model/tool callbacks into UI events
-    on an ``asyncio.Queue``, the same pattern ``app/crawl/callbacks.py`` uses.
+    A LangChain callback handler that translates model/tool callbacks into the
+    turn's semantic events, the same pattern ``app/crawl/callbacks.py`` uses.
     ``BaseAgent.get_stream_response`` only yields assistant text, which cannot
     express the tool timeline this page shows.
+
+The bridge holds no aggregate state of its own: it hands each event to
+``Run.emit``, which folds, persists and publishes it under one lock. Keeping the
+fold there is what lets a reconnecting client be handed a snapshot whose ``seq``
+cannot disagree with the frames that follow it.
 """
 
-import asyncio
 import time
 from typing import Any, Optional
 from uuid import UUID
@@ -26,6 +30,7 @@ from langchain_core.outputs import LLMResult
 
 from app.agents.match_tools import FINAL_ANSWER_TOOL
 from app.core.logging import logger
+from app.services.match_runs import Run
 
 _ESCAPES = {
     "n": "\n",
@@ -160,40 +165,17 @@ class FinalAnswerExtractor:
 
 
 class MatchStreamBridge(AsyncCallbackHandler):
-    """Translate agent callbacks into UI events on a queue.
+    """Translate agent callbacks into the run's event stream."""
 
-    Attributes:
-        narration: Assistant text emitted between tool calls.
-        final_answer: The decoded ``final_answer`` payload.
-        tool_events: The turn's tool timeline, in start order.
-    """
-
-    def __init__(self, queue: asyncio.Queue):
-        """Bridge into ``queue``; ``None`` is pushed when the turn ends."""
-        self.queue = queue
-        self.narration = ""
-        self.final_answer = ""
-        # Ordered reasoning trace: narration and tool steps interleaved exactly
-        # as they happened, which is what the UI replays.
-        self.steps: list[dict] = []
-
+    def __init__(self, run: Run):
+        """Bridge into ``run``."""
+        self.run = run
         self._extractor = FinalAnswerExtractor()
-        self._tool_runs: dict[UUID, int] = {}
-        self._tool_started: dict[UUID, float] = {}
+        self._started: dict[UUID, float] = {}
+        self._call_ids: dict[UUID, str] = {}
         # Tool-call arguments arrive as deltas keyed by index within one
         # assistant message, not by call id.
         self._arg_index_names: dict[int, str] = {}
-
-    def _emit(self, event: str, data: dict) -> None:
-        """Queue one event for the SSE generator."""
-        self.queue.put_nowait({"event": event, "data": data})
-
-    def _append_narration(self, text: str) -> None:
-        """Grow the trailing narration step, opening one when needed."""
-        if not self.steps or self.steps[-1]["type"] != "narration":
-            self.steps.append({"type": "narration", "index": len(self.steps), "content": ""})
-        self.steps[-1]["content"] += text
-        self._emit("narration", {"index": self.steps[-1]["index"], "content": text})
 
     async def on_chat_model_start(
         self, serialized: dict[str, Any], messages: list[list[BaseMessage]], **kwargs: Any
@@ -223,15 +205,13 @@ class MatchStreamBridge(AsyncCallbackHandler):
                 if resolved == FINAL_ANSWER_TOOL:
                     text = self._extractor.feed(args_delta)
                     if text:
-                        self.final_answer += text
-                        self._emit("final_delta", {"content": text})
+                        await self.run.emit("final_delta", {"content": text})
                 elif resolved:
-                    self._emit("tool_args", {"name": resolved, "delta": args_delta})
+                    await self.run.emit("tool_args", {"name": resolved, "delta": args_delta})
             return
 
         if token:
-            self.narration += token
-            self._append_narration(token)
+            await self.run.emit("narration", {"content": token})
 
     async def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Fall back to the whole argument blob when nothing streamed.
@@ -240,7 +220,7 @@ class MatchStreamBridge(AsyncCallbackHandler):
         rather than as deltas; without this the final answer would never reach
         the client.
         """
-        if self.final_answer or not response.generations:
+        if self.run.final_answer or not response.generations:
             return
 
         message = getattr(response.generations[0][0], "message", None)
@@ -249,8 +229,7 @@ class MatchStreamBridge(AsyncCallbackHandler):
                 continue
             answer = (call.get("args") or {}).get("answer") or ""
             if answer:
-                self.final_answer = answer
-                self._emit("final_delta", {"content": answer})
+                await self.run.emit("final_delta", {"content": answer})
 
     async def on_tool_start(
         self,
@@ -267,82 +246,62 @@ class MatchStreamBridge(AsyncCallbackHandler):
             return  # not a step the user needs to see
 
         call_id = str(run_id)
-        entry = {
-            "type": "tool",
-            "index": len(self.steps),
-            "call_id": call_id,
-            "name": name,
-            "label": TOOL_LABELS.get(name, name),
-            "args": inputs if inputs is not None else input_str,
-            "ok": True,
-            "summary": "",
-            "observation": "",
-            "count": None,
-            "duration_ms": None,
-        }
-        self._tool_runs[run_id] = len(self.steps)
-        self._tool_started[run_id] = time.time()
-        self.steps.append(entry)
-        self._emit(
+        self._call_ids[run_id] = call_id
+        self._started[run_id] = time.time()
+        await self.run.emit(
             "tool_start",
-            {k: entry[k] for k in ("index", "call_id", "name", "label", "args")},
+            {
+                "call_id": call_id,
+                "name": name,
+                "label": TOOL_LABELS.get(name, name),
+                "args": inputs if inputs is not None else input_str,
+            },
         )
 
     async def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any) -> None:
         """Close a timeline entry with a short result summary."""
-        idx = self._tool_runs.pop(run_id, None)
-        if idx is None:
+        call_id = self._call_ids.pop(run_id, None)
+        if call_id is None:
             return
 
-        entry = self.steps[idx]
         content = str(getattr(output, "content", output))
         count = _extract_count(content)
-
-        entry["ok"] = True
-        entry["count"] = count
-        entry["summary"] = f"{count} 条" if count is not None else "完成"
-        # The raw observation is what the model actually read, so the trace
-        # shows it verbatim (truncated) rather than just a result count.
-        entry["observation"] = _truncate(content)
-        entry["duration_ms"] = (time.time() - self._tool_started.pop(run_id, time.time())) * 1000
-
-        self._emit(
+        await self.run.emit(
             "tool_end",
             {
-                "index": entry["index"],
-                "call_id": entry["call_id"],
+                "call_id": call_id,
                 "ok": True,
-                "summary": entry["summary"],
-                "observation": entry["observation"],
+                "summary": f"{count} 条" if count is not None else "完成",
+                # The raw observation is what the model actually read, so the
+                # trace shows it verbatim (truncated) rather than a bare count.
+                "observation": _truncate(content),
                 "count": count,
-                "duration_ms": entry["duration_ms"],
+                "duration_ms": self._elapsed(run_id),
             },
         )
 
     async def on_tool_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
         """Mark a timeline entry as failed."""
-        idx = self._tool_runs.pop(run_id, None)
-        if idx is None:
+        call_id = self._call_ids.pop(run_id, None)
+        if call_id is None:
             return
 
-        entry = self.steps[idx]
-        entry["ok"] = False
-        entry["summary"] = str(error)[:200]
-        entry["observation"] = str(error)[:2000]
-        entry["duration_ms"] = (time.time() - self._tool_started.pop(run_id, time.time())) * 1000
-
-        logger.warning("match_tool_failed", tool=entry["name"], error=str(error))
-        self._emit(
+        logger.warning("match_tool_failed", call_id=call_id, error=str(error))
+        await self.run.emit(
             "tool_end",
             {
-                "index": entry["index"],
-                "call_id": entry["call_id"],
+                "call_id": call_id,
                 "ok": False,
-                "summary": entry["summary"],
-                "observation": entry["observation"],
-                "duration_ms": entry["duration_ms"],
+                "summary": str(error)[:200],
+                "observation": str(error)[:2000],
+                "count": None,
+                "duration_ms": self._elapsed(run_id),
             },
         )
+
+    def _elapsed(self, run_id: UUID) -> float:
+        """Milliseconds since the tool started."""
+        return (time.time() - self._started.pop(run_id, time.time())) * 1000
 
 
 # Observations can be large (a search returns dozens of jobs); keep enough to

@@ -112,6 +112,20 @@ The answer cites jobs with `:job[<uuid>]` markers, which the frontend replaces w
 
 Keep `JOB_RE` in `remarkJobEmbed.ts` and `_JOB_RE` in `job_citations.py` in sync. Both are pinned to the UUID shape, so a mis-transcribed id degrades to plain text instead of becoming a guaranteed 404.
 
+### Resumable turns
+
+A turn's lifetime belongs to `services/match_runs.py::registry`, not to any HTTP request — closing the tab drops a subscriber, not the run. `Run.emit` folds each frame, writes it to `match_messages`, *then* publishes it, so the stored `seq` is never behind what a client has seen and a reconnecting client can trust the row. `Run.attach` takes the snapshot and registers the queue under one lock, so the snapshot's `seq` and the first live frame are necessarily adjacent; that is why the client never sends an offset.
+
+Two numbers are easy to confuse. `index` is *which step* a frame belongs to (hundreds of `narration` frames share one); `seq` is *which frame* it is. `match_messages.seq` is per-message, not session-global, so there is no `FirstSeq` equivalent.
+
+`frontend/src/lib/matchAccumulator.ts` is a pure fold — every snapshot replaces it wholesale rather than merging, which is what makes replay safe. Never reintroduce `+=` on `finalAnswer` or narration in `useMatchChat`.
+
+A subscription belongs to a **conversation**, not to the hook (`watchRef: {sessionId, controller}`). The sidebar switches conversations without unmounting, so a bare "is a stream alive" boolean both leaves the old stream running and blocks the new one — the visible symptom is a turn that freezes and then dumps its whole answer at the end.
+
+When the model answers in plain text instead of calling `final_answer`, the **trailing** narration step is the answer. `MatchService._close_out` and `MatchTurnAccumulator.toState()` apply that same rule so the answer streams into the body live instead of hiding in the muted trace; only the trailing step, since earlier narration is interstitial and belongs to the trace.
+
+Stopping goes through `BaseAgent.run`'s `cancel_check` (polled at graph node boundaries), not `Task.cancel()`. Because a turn can be cut between an `AIMessage` carrying `tool_calls` and its `ToolMessage` replies, `MatchService._repair_checkpoint` backfills placeholders — without it the *next* turn on that thread fails.
+
 ### Streaming (SSE)
 
 `/api/compare/generate` and `/api/chat/message` return `StreamingResponse` with `X-Accel-Buffering: no`. The wire format is hand-rolled in `services/report_service.py` / `chat_service.py`:
@@ -124,9 +138,9 @@ event: compare_end                    data: {"report_id": ..., "job_ids": [...]}
 event: chat_end                       data: {"message_id": ...}
 ```
 
-`/api/match/conversations/{id}/messages` uses a richer contract of its own —
-`message_start` / `narration` / `tool_start` / `tool_args` / `tool_end` /
-`final_delta` / `message_end` — parsed by `hooks/useMatchChat.ts`.
+`/match` does **not** stream from its submit endpoint. `POST /api/match/conversations/{id}/messages` records the turn, starts the agent and returns `{message_id}`; the answer is watched on `GET /api/match/conversations/{id}/stream`. Splitting them is what makes resume possible — a request carrying the question can never be retried, a subscription carrying only the id always can. See `docs/match-stream-resume-design.md`.
+
+The subscription opens with `snapshot` (the turn's complete state, not a delta) and then streams `narration` / `tool_start` / `tool_args` / `tool_end` / `final_delta` / `message_end`, each frame carrying its `seq` as the SSE `id:`. `: ping` comments every 15s let the client detect a socket that died without closing.
 `hooks/useSSE.ts` still serves `/compare` and was deliberately left alone.
 
 `frontend/src/lib/sse.ts` parses this manually (POST + `ReadableStream`, not `EventSource`) and `hooks/useSSE.ts` maps the event names to state. Adding a new stream means touching both the emitter and that switch statement.

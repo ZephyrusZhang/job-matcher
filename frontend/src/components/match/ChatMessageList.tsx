@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import { MarkdownRenderer } from "@/components/match/MarkdownRenderer"
 import { ThinkingTrace } from "@/components/match/ThinkingTrace"
 import { cn } from "@/lib/utils"
-import type { MatchMessage, TraceStep } from "@/types/match"
+import type { MatchMessage, TraceStep, TurnStatus } from "@/types/match"
 
 function ScopeChips({ message }: { message: MatchMessage }) {
   const scope = message.scope
@@ -83,17 +83,27 @@ interface ChatMessageListProps {
   messages: MatchMessage[]
   steps: TraceStep[]
   finalAnswer: string
+  status: TurnStatus
   isStreaming: boolean
   error: string | null
+}
+
+/** Why a turn ended, when it did not simply finish. */
+const STATUS_NOTE: Partial<Record<TurnStatus, string>> = {
+  stopped: "已停止生成",
+  interrupted: "本轮已中断（服务重启）",
+  failed: "生成失败",
 }
 
 export function ChatMessageList({
   messages,
   steps,
   finalAnswer,
+  status,
   isStreaming,
   error,
 }: ChatMessageListProps) {
+  const note = STATUS_NOTE[status]
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -114,8 +124,19 @@ export function ChatMessageList({
         ),
       )}
 
-      {isStreaming && (
-        <AssistantTurn steps={steps} finalAnswer={finalAnswer} isStreaming />
+      {/* The live turn is rendered from the accumulator; `messages` drops it
+          while it is running so it does not appear twice. */}
+      {(isStreaming || steps.length > 0 || finalAnswer) && (
+        <div>
+          <AssistantTurn
+            steps={steps}
+            finalAnswer={finalAnswer}
+            isStreaming={isStreaming}
+          />
+          {!isStreaming && note && (
+            <p className="mt-2 text-xs text-text-muted">{note}</p>
+          )}
+        </div>
       )}
 
       {error && (

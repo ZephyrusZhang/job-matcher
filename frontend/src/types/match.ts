@@ -29,6 +29,30 @@ export interface TraceStep {
   pending?: boolean
 }
 
+/**
+ * How far a turn got.
+ *
+ * `running` means a live run is still writing the row and the client should
+ * subscribe; `interrupted` means a backend restart stranded it, so there is
+ * nothing left to subscribe to.
+ */
+export type TurnStatus =
+  | "running"
+  | "completed"
+  | "stopped"
+  | "failed"
+  | "interrupted"
+
+/** The complete state of a turn as of `seq` — a value, not a delta. */
+export interface MatchSnapshot {
+  message_id: string | null
+  seq: number
+  status: TurnStatus
+  steps: TraceStep[]
+  final_answer: string
+  job_ids: string[]
+}
+
 export interface MatchMessage {
   id: string
   session_id: string
@@ -46,6 +70,9 @@ export interface MatchMessage {
    * in the UI reads this.
    */
   job_ids: string[]
+  status: TurnStatus
+  /** Frames folded into this row so far — the resume anchor. */
+  seq: number
   created_at: string
 }
 

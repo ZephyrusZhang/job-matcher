@@ -97,6 +97,16 @@ async def lifespan(app: FastAPI):
     )
     yield
 
+    # Stop in-flight match turns first: they hold their own SQLite connections
+    # and write on every frame, so leaving them running past shutdown would
+    # keep writing into a database nothing is reading.
+    try:
+        from app.services.match_runs import registry as match_registry
+
+        await match_registry.shutdown()
+    except Exception as e:
+        struct_logger.warning("match_runs_shutdown_failed", error=str(e))
+
     # Flush before closing anything else: Langfuse exports spans in the
     # background, so a shutdown right after an agent run would drop its tail.
     flush_langfuse()

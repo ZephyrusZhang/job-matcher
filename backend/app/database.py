@@ -105,6 +105,13 @@ CREATE TABLE IF NOT EXISTS match_messages (
     resume_id       TEXT,
     steps           TEXT,
     job_ids         TEXT,
+    -- running | completed | stopped | failed | interrupted.
+    -- A turn's row is inserted as `running` and updated frame by frame, so a
+    -- client that reconnects mid-turn can pick the stream back up.
+    status          TEXT NOT NULL DEFAULT 'completed',
+    -- Frames folded into this row so far; the resume anchor. Monotonic within
+    -- one assistant message, reset per turn.
+    seq             INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -71,7 +71,11 @@ export function MatchChat({ conversationId }: MatchChatProps) {
     await refresh()
   }
 
-  const isEmpty = chat.messages.length === 0 && !chat.isStreaming && !chat.finalAnswer
+  const isEmpty =
+    chat.messages.length === 0 &&
+    chat.steps.length === 0 &&
+    !chat.isStreaming &&
+    !chat.finalAnswer
 
   return (
     <div className="flex h-full flex-col">
@@ -89,6 +93,7 @@ export function MatchChat({ conversationId }: MatchChatProps) {
             messages={chat.messages}
             steps={chat.steps}
             finalAnswer={chat.finalAnswer}
+            status={chat.status}
             isStreaming={chat.isStreaming}
             error={chat.error}
           />

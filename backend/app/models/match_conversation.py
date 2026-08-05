@@ -133,6 +133,8 @@ async def add_message(
     steps: list | None = None,
     job_ids: list | None = None,
     message_id: str | None = None,
+    status: str = "completed",
+    seq: int = 0,
 ) -> dict:
     """Append a message.
 
@@ -148,6 +150,8 @@ async def add_message(
         steps: The turn's ordered reasoning trace.
         job_ids: Jobs cited by this turn.
         message_id: Pre-allocated id, so streaming can announce it up front.
+        status: ``running`` for a turn that is still being written.
+        seq: Frames folded into the row so far.
 
     Returns:
         The stored message.
@@ -157,8 +161,8 @@ async def add_message(
         """
         INSERT INTO match_messages
             (id, session_id, role, content, final_answer, scope, resume_id,
-             steps, job_ids)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             steps, job_ids, status, seq)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             new_id,
@@ -170,6 +174,8 @@ async def add_message(
             resume_id,
             _dumps(steps),
             _dumps(job_ids),
+            status,
+            seq,
         ),
     )
     await db.execute(
@@ -178,6 +184,61 @@ async def add_message(
     )
     await db.commit()
     return await get_message(db, new_id)  # type: ignore[return-value]
+
+
+async def update_progress(
+    db: aiosqlite.Connection,
+    message_id: str,
+    *,
+    seq: int,
+    final_answer: str,
+    steps: list | None = None,
+    job_ids: list | None = None,
+    status: str | None = None,
+) -> None:
+    """Write a running turn's current state back to its row.
+
+    Called once per emitted frame, before the frame reaches any client, so the
+    stored ``seq`` is never behind what a client has seen — a reconnecting
+    client can therefore trust the row.
+
+    ``steps`` is omitted for the frames that cannot change it (``final_delta``,
+    ``tool_args``), which keeps the large trace payload out of the great
+    majority of writes.
+    """
+    columns = ["seq = ?", "final_answer = ?"]
+    params: list[Any] = [seq, final_answer]
+
+    if steps is not None:
+        columns.append("steps = ?")
+        params.append(_dumps(steps))
+    if job_ids is not None:
+        columns.append("job_ids = ?")
+        params.append(_dumps(job_ids))
+    if status is not None:
+        columns.append("status = ?")
+        params.append(status)
+
+    params.append(message_id)
+    await db.execute(
+        f"UPDATE match_messages SET {', '.join(columns)} WHERE id = ?", params
+    )
+    await db.commit()
+
+
+async def mark_stale_running(db: aiosqlite.Connection, session_id: str) -> int:
+    """Flag rows still marked ``running`` that no live run owns.
+
+    Only reachable after a backend restart: the registry is process-local, so a
+    surviving ``running`` row has no task behind it and will never finish.
+    """
+    cursor = await db.execute(
+        "UPDATE match_messages SET status = 'interrupted' "
+        "WHERE session_id = ? AND status = 'running'",
+        (session_id,),
+    )
+    await db.commit()
+    return cursor.rowcount
 
 
 async def get_message(db: aiosqlite.Connection, message_id: str) -> dict | None:

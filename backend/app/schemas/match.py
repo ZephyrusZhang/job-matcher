@@ -57,6 +57,11 @@ class MatchMessageOut(BaseModel):
     resume_id: str | None = None
     steps: list[TraceStep] = Field(default_factory=list)
     job_ids: list[str] = Field(default_factory=list)
+    # `running` means a live turn is still writing this row; the client should
+    # subscribe. `interrupted` means it was left behind by a backend restart.
+    status: Literal["running", "completed", "stopped", "failed", "interrupted"] = "completed"
+    # Frames folded into this row so far — the resume anchor.
+    seq: int = 0
     created_at: str
 
 
