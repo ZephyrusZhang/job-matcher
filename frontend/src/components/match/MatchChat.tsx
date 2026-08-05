@@ -57,6 +57,13 @@ export function MatchChat({ conversationId }: MatchChatProps) {
     fetchFavorites()
   }, [fetchFavorites])
 
+  // Fires on both edges, so the sidebar's running indicator appears as soon as
+  // a turn starts and clears as soon as it ends, rather than waiting out its
+  // own poll interval.
+  useEffect(() => {
+    void refresh()
+  }, [chat.isStreaming, refresh])
+
   const handleSend = async (content: string) => {
     let id = conversationId
 

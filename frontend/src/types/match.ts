@@ -80,6 +80,8 @@ export interface Conversation {
   id: string
   title: string
   message_count: number
+  /** A turn is in flight right now, in this tab or another. */
+  is_running: boolean
   created_at: string
   updated_at: string
 }

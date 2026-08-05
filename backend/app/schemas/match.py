@@ -71,6 +71,10 @@ class ConversationOut(BaseModel):
     id: str
     title: str
     message_count: int = 0
+    # A turn is in flight right now. Read from the run registry rather than the
+    # message rows, so a turn stranded by a backend restart does not keep
+    # showing as live.
+    is_running: bool = False
     created_at: str
     updated_at: str
 

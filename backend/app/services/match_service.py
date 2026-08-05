@@ -78,8 +78,11 @@ class MatchService:
         return ConversationOut(**row, message_count=0)
 
     async def list_conversations(self, db: aiosqlite.Connection) -> list[ConversationOut]:
-        """List conversations, most recently used first."""
-        return [ConversationOut(**row) for row in await conv_model.list_conversations(db)]
+        """List conversations, most recently used first, flagging live turns."""
+        return [
+            ConversationOut(**row, is_running=registry.get(row["id"]) is not None)
+            for row in await conv_model.list_conversations(db)
+        ]
 
     async def rename_conversation(
         self, db: aiosqlite.Connection, session_id: str, title: str

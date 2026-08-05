@@ -8,6 +8,38 @@ import { SESSION_PARAM, conversationHref } from "@/lib/matchRoutes"
 import { cn } from "@/lib/utils"
 import type { Conversation } from "@/types/match"
 
+/** How often the sidebar re-checks which conversations have a live turn. */
+const LIVE_POLL_MS = 5000
+
+/**
+ * Marks a conversation whose turn is still being generated.
+ *
+ * Sits in the row's trailing slot, where the overflow menu appears on hover —
+ * the menu takes precedence, since it is only shown deliberately.
+ */
+function RunningDot({ active }: { active: boolean }) {
+  return (
+    <span
+      className="absolute right-2 top-1/2 flex size-1.5 -translate-y-1/2 group-hover:opacity-0"
+      title="正在生成"
+      aria-label="正在生成"
+    >
+      <span
+        className={cn(
+          "absolute inline-flex size-full animate-ping rounded-full opacity-75",
+          active ? "bg-[var(--nav-active-fg)]" : "bg-blue-400",
+        )}
+      />
+      <span
+        className={cn(
+          "relative inline-flex size-full rounded-full",
+          active ? "bg-[var(--nav-active-fg)]" : "bg-blue-400",
+        )}
+      />
+    </span>
+  )
+}
+
 /**
  * Conversation history, rendered inside the app sidebar on every page.
  *
@@ -32,6 +64,12 @@ export function ConversationList() {
 
   useEffect(() => {
     fetchAll()
+    // A turn outlives the request that started it, so it can be running in
+    // another tab or have been left behind by a reload. Polling is the only
+    // way this list learns about that; the interval is slow because the
+    // conversation you are driving updates itself through the store.
+    const timer = setInterval(fetchAll, LIVE_POLL_MS)
+    return () => clearInterval(timer)
   }, [fetchAll])
 
   const startRename = (conversation: Conversation) => {
@@ -130,13 +168,21 @@ export function ConversationList() {
                       {conversation.title || "新对话"}
                     </button>
 
+                    {conversation.is_running && <RunningDot active={isActive} />}
+
                     <button
                       type="button"
                       onClick={() =>
                         setMenuId(menuId === conversation.id ? null : conversation.id)
                       }
                       className={cn(
-                        "absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-text-muted transition-opacity hover:text-text-primary",
+                        "absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 transition-opacity",
+                        // The active row is an inverted surface, so the icon has
+                        // to follow that scale — `text-text-primary` is the same
+                        // white as `--nav-active-bg` and would vanish into it.
+                        isActive
+                          ? "text-[var(--nav-active-fg)]/55 hover:bg-black/10 hover:text-[var(--nav-active-fg)]"
+                          : "text-text-muted hover:bg-[var(--nav-hover-bg)] hover:text-text-primary",
                         menuId === conversation.id
                           ? "opacity-100"
                           : "opacity-0 group-hover:opacity-100",
