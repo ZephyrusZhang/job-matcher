@@ -17,6 +17,13 @@ export type Theme = "light" | "dark"
 
 const STORAGE_KEY = "jm-theme"
 
+/**
+ * What the server renders, and therefore what the first client render must
+ * produce. Anything derived from the *stored* theme has to wait until after
+ * mount, or it will not match the HTML it is hydrating.
+ */
+export const SSR_THEME: Theme = "dark"
+
 interface ThemeStore {
   theme: Theme
   setTheme: (theme: Theme) => void
@@ -48,7 +55,7 @@ function applyToDom(theme: Theme) {
 }
 
 export const useThemeStore = create<ThemeStore>((set, get) => ({
-  theme: "dark",
+  theme: SSR_THEME,
   setTheme: (theme) => {
     set({ theme })
     applyToDom(theme)

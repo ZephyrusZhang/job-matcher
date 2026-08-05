@@ -1,8 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import { cn } from "@/lib/utils"
-import { useThemeStore } from "@/lib/theme"
+import { SSR_THEME, useThemeStore } from "@/lib/theme"
+
+/** The "have we mounted" signal never updates, so it needs no subscription. */
+const NEVER_CHANGES = () => () => {}
 
 interface ThemeToggleProps {
   /** Extra classes for positioning/spacing. */
@@ -27,11 +30,25 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
   const hydrate = useThemeStore((s) => s.hydrate)
   const [isPressed, setIsPressed] = useState(false)
 
+  // `useSyncExternalStore` is the sanctioned way to hold a value that must
+  // differ between the server render and the client: React uses the server
+  // snapshot while hydrating and swaps to the client one straight after,
+  // without a setState in an effect.
+  const mounted = useSyncExternalStore(NEVER_CHANGES, () => true, () => false)
+
   useEffect(() => {
     hydrate()
   }, [hydrate])
 
-  const isDark = theme === "dark"
+  // Until this instance has mounted, render exactly what the server did.
+  //
+  // Two of these are in the tree at once — the sidebar's and the mobile nav's,
+  // one merely hidden by CSS — and both share the store. Without the gate, the
+  // first one's effect can call `hydrate()` and flip the store to the stored
+  // theme *before* the second has hydrated; the second then renders `light`
+  // against server HTML that said `dark`, and React reports a mismatch on
+  // `aria-checked`, `aria-label`, `title` and `class`.
+  const isDark = mounted ? theme === "dark" : SSR_THEME === "dark"
   const label = isDark ? "切换为亮色模式" : "切换为暗色模式"
 
   const handleClick = () => {
