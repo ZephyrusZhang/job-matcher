@@ -6,13 +6,25 @@ list, and the model — seeing only the system prompt — greeted the user
 mid-turn and started re-running tools it had already run.
 """
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.agents.matcher import KEEP_RECENT_MESSAGES, matcher_agent
+from app.agents.matcher import (
+    CONTEXT_RESERVE_TOKENS,
+    CONTEXT_WINDOW_TOKENS,
+    KEEP_RECENT_MESSAGES,
+    matcher_agent,
+)
+from app.core.config import settings
 from app.utils.graph import count_tokens, prepare_messages
 
 QUESTION = "请你根据我的简历找 TOP 10 最适合我的岗位"
 SYSTEM = "你是一位资深技术招聘顾问"
+
+# Compaction is exercised against a small budget so the fixtures stay cheap;
+# the logic under test does not depend on the real ceiling, and
+# `test_budget_uses_the_context_window` covers the ceiling itself.
+TEST_BUDGET = 32_000
 
 
 def build_turn(job_details: int, jd_chars: int = 2000) -> list:
@@ -38,25 +50,42 @@ def kept(result: list) -> list:
     return [m for m in result if getattr(m, "role", None) != "system"]
 
 
+@pytest.fixture
+def small_budget(monkeypatch):
+    """Run compaction against a budget a test-sized history can exceed."""
+    monkeypatch.setattr(type(matcher_agent), "max_history_tokens", TEST_BUDGET)
+    return TEST_BUDGET
+
+
+def test_budget_uses_the_context_window():
+    """A budget well under the window would discard context for no reason."""
+    budget = matcher_agent.max_history_tokens
+    assert budget == CONTEXT_WINDOW_TOKENS - settings.MAX_TOKENS - CONTEXT_RESERVE_TOKENS
+    # Room for the reply and the schemas, but not a token more than necessary.
+    assert budget > CONTEXT_WINDOW_TOKENS * 0.85
+    assert budget + settings.MAX_TOKENS < CONTEXT_WINDOW_TOKENS
+
+
 def test_framework_trimmer_drops_everything_once_over_budget():
     """The behaviour being worked around, pinned so it cannot regress silently."""
     messages = build_turn(20)
-    assert count_tokens(messages) > 32000
+    assert count_tokens(messages) > TEST_BUDGET
 
-    trimmed = prepare_messages(messages, SYSTEM, 32000)
+    trimmed = prepare_messages(messages, SYSTEM, TEST_BUDGET)
     assert kept(trimmed) == [], "framework trimming is expected to wipe history here"
 
 
-def test_question_survives_a_long_turn():
+def test_question_survives_a_long_turn(small_budget):
     messages = build_turn(20)
-    result = kept(matcher_agent.compact_history(messages, SYSTEM))
+    assert count_tokens(messages) > small_budget
 
+    result = kept(matcher_agent.compact_history(messages, SYSTEM))
     assert any(
         isinstance(m, HumanMessage) and QUESTION in m.content for m in result
     ), "the user's question must never be dropped"
 
 
-def test_no_message_is_dropped():
+def test_no_message_is_dropped(small_budget):
     """Removing an assistant message would orphan the tool replies to it."""
     messages = build_turn(20)
     result = kept(matcher_agent.compact_history(messages, SYSTEM))
@@ -67,17 +96,18 @@ def test_no_message_is_dropped():
     assert call_ids == reply_ids
 
 
-def test_short_turns_are_passed_through_untouched():
-    messages = build_turn(3)
+def test_a_realistic_turn_is_passed_through_untouched():
+    """Twenty full job descriptions used to blow the old 32k budget outright."""
+    messages = build_turn(20)
     assert count_tokens(messages) <= matcher_agent.max_history_tokens
 
     result = kept(matcher_agent.compact_history(messages, SYSTEM))
     assert result == messages
 
 
-def test_recent_results_are_left_intact():
-    """Only stale payloads are shortened; the model is still reasoning over the tail."""
-    messages = build_turn(200)
+def test_recent_results_are_left_intact(small_budget):
+    """Only stale payloads are shortened; the model still needs the tail."""
+    messages = build_turn(40)
     result = kept(matcher_agent.compact_history(messages, SYSTEM))
 
     assert count_tokens(result) < count_tokens(messages)
@@ -87,8 +117,8 @@ def test_recent_results_are_left_intact():
         assert original.content == compacted.content
 
 
-def test_compaction_keeps_a_readable_head_of_old_results():
-    messages = build_turn(200)
+def test_compaction_keeps_a_readable_head_of_old_results(small_budget):
+    messages = build_turn(40)
     result = kept(matcher_agent.compact_history(messages, SYSTEM))
 
     first_tool = next(m for m in result if isinstance(m, ToolMessage))

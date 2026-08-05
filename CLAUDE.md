@@ -108,6 +108,8 @@ Scope is **not** a tool argument — `app/agents/match_tools.py` pins it in a `C
 
 `max_history_tokens` on an agent is the **history budget**, not the reply length cap. The reply cap is `settings.MAX_TOKENS`, which `services/llm/registry.py` passes as the model's `max_tokens` — the same setting also serves as the *default* history budget in `prepare_messages`, so raising the env var changes both. Raise the agent attribute instead.
 
+That budget is the point at which compaction *starts*, not a target size, so it belongs as close to the context window as is safe — a lower value only throws away context the model could still have used. `MatchAgent` derives it: `CONTEXT_WINDOW_TOKENS - settings.MAX_TOKENS - CONTEXT_RESERVE_TOKENS` (1M − 8k − 100k = 892k). The reserve covers the tool schemas, which the history count does not see, and the tokenizer gap — `count_tokens` uses cl100k_base because the provider's tokenizer is not in tiktoken.
+
 ### Embedded job cards
 
 The answer cites jobs with `:job[<uuid>]` markers, which the frontend replaces with cards. A marker alone in its own paragraph becomes a block card; one inside a sentence becomes an inline chip — the distinction exists because a block card is a `<div>` and would be illegal inside the `<p>` a paragraph renders as.

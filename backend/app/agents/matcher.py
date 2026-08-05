@@ -12,11 +12,21 @@ the UI renders narration as muted progress text and the final answer as the body
 from typing import Any
 
 from app.agents.match_tools import FINAL_ANSWER_TOOL, MATCH_TOOLS, current_turn
+from app.core.config import settings
 from app.core.langgraph import BaseAgent
 from app.core.logging import logger
 from app.schemas.agent import Message
 from app.schemas.match import MatchScope
 from app.utils.graph import count_tokens
+
+# The provider's context window, shared between the prompt and the reply.
+CONTEXT_WINDOW_TOKENS = 1_000_000
+
+# Slack for what the history count cannot see or size exactly: the tool schemas
+# sent on every call, and the tokenizer gap — `utils/graph.py` falls back to
+# cl100k_base because the provider's own tokenizer is not in tiktoken, and that
+# estimate drifts on Chinese text.
+CONTEXT_RESERVE_TOKENS = 100_000
 
 # The most recent exchanges are what the model is actively reasoning over, so
 # they are never touched.
@@ -96,11 +106,13 @@ class MatchAgent(BaseAgent):
     terminal_tools = frozenset({FINAL_ANSWER_TOOL})
     max_turns = 12
     # History budget only — *not* the reply length cap, which is
-    # `settings.MAX_TOKENS` over in `services/llm/registry.py`. The provider's
-    # context window is ~1M; reading twenty full job descriptions in one turn
-    # runs to roughly 80k tokens, so this leaves room for several times that
-    # before `compact_history` has to start shortening anything.
-    max_history_tokens = 400_000
+    # `settings.MAX_TOKENS` over in `services/llm/registry.py`.
+    #
+    # This is the ceiling at which `compact_history` starts shortening, so it
+    # should sit as close to the window as is safe: anything lower discards
+    # context the model could otherwise still see. Derived from the window
+    # rather than picked, so it tracks a change to either term.
+    max_history_tokens = CONTEXT_WINDOW_TOKENS - settings.MAX_TOKENS - CONTEXT_RESERVE_TOKENS
     # mem0 needs an embeddings endpoint the configured provider does not expose.
     use_memory = False
     # The UI renders tokens as they arrive, including the final_answer payload.
