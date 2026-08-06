@@ -1,9 +1,13 @@
 """LangChain tool wrappers for the crawl agent.
 
-These wrap the exact same ``browser_mgr`` / ``sandbox_mgr`` calls that
-``app/crawl/tools.py::execute_tool`` routes to, keeping tool names, descriptions,
-parameter schemas and return payloads byte-for-byte identical so the agent's
-behaviour does not change with the move to LangGraph.
+These wrap the ``browser_mgr`` / ``sandbox_mgr`` calls the pre-LangGraph loop
+routed to, with the same tool names, parameter schemas and return payloads.
+
+The *descriptions* have since diverged from that port: they now state what the
+sandbox image actually ships and how a command timeout behaves, because the
+originals said otherwise and the agent acted on them — it ran ``apt-get`` at
+runtime to install what the image already had, and rewrote a working crawler
+after a timeout that had not actually killed the process.
 
 The managers are synchronous and block (Playwright driving a real browser,
 Docker exec against a sandbox container), so every tool hops to a worker thread
@@ -98,6 +102,9 @@ browser_action = StructuredTool.from_function(
         "在当前页面执行操作以触发网络请求。"
         "支持：click（点击）、scroll（滚动）、type（输入）、goto（跳转）。"
         "返回：本次新增请求数、当前总请求数。"
+        "click 需要能精确命中的选择器，5 秒内命中不了就报错并浪费一轮；"
+        "招聘站多为前端框架渲染，class 名无法凭经验猜中，"
+        "想打开某个岗位详情优先用 goto 直接访问拼好的详情页 URL。"
     ),
     args_schema=BrowserActionArgs,
 )
@@ -231,9 +238,12 @@ sandbox_run_command = StructuredTool.from_function(
     coroutine=_sandbox_run_command,
     name="sandbox_run_command",
     description=(
-        "在 Docker 沙箱中执行 shell 命令。用于安装依赖、运行爬虫、查看输出。"
-        "沙箱已预装 Python 3.11、pip。Playwright + Chromium 按需安装。"
+        "在 Docker 沙箱中执行 shell 命令。用于运行爬虫、查看输出。"
+        "已预装 Python 3.11 + httpx + playwright + chromium，无需也不要安装任何依赖。"
         "返回：exit_code、stdout（最后5000字符）、stderr（最后3000字符）。"
+        "注意：超时只是停止等待，容器里的进程仍在继续运行——"
+        "超时后先检查产物文件是否已生成或仍在增长，不要直接重写脚本。"
+        "耗时长的全量爬取用 nohup ... & 放后台，再轮询查看进度。"
     ),
     args_schema=SandboxRunCommandArgs,
 )
