@@ -1,6 +1,6 @@
 "use client"
 
-import { Star, MapPin, Clock } from "lucide-react"
+import { Star, MapPin, Clock, ExternalLink } from "lucide-react"
 import type { Job } from "@/types/job"
 import { cn } from "@/lib/utils"
 import { CATEGORY_COLORS } from "@/lib/constants"
@@ -91,13 +91,33 @@ export function JobCard({ job, isFavorited, onToggleFavorite, onClick, index = 0
         </div>
       )}
 
-      {/* Posted date */}
-      {job.posted_date && (
-        <div className="flex items-center gap-1 text-xs text-text-muted mt-auto">
-          <Clock className="h-3 w-3 shrink-0" />
-          <span>{formatRelativeTime(job.posted_date)}</span>
-        </div>
-      )}
+      {/* Footer. Always rendered even without a date, so the link keeps its
+          place on every card instead of jumping to wherever the content ends. */}
+      <div className="mt-auto flex items-center justify-between gap-2">
+        {job.posted_date ? (
+          <span className="flex items-center gap-1 text-xs text-text-muted">
+            <Clock className="h-3 w-3 shrink-0" />
+            {formatRelativeTime(job.posted_date)}
+          </span>
+        ) : (
+          <span />
+        )}
+
+        {/* The card opens the detail modal; this is the way out to the
+            company's own posting. Kept as visible as the favourite star —
+            hiding it until hover would make it undiscoverable in a grid. */}
+        <a
+          href={job.source_url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="-m-1 shrink-0 p-1 text-text-muted transition-colors hover:text-text-primary"
+          title="打开公司招聘页"
+          aria-label="打开公司招聘页"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      </div>
     </div>
   )
 }
