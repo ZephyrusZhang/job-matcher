@@ -60,21 +60,28 @@ export function Sidebar() {
 
       {/* Footer: settings and theme share one row, mirroring the reference's
           two-action footer instead of stacking another full-width nav entry. */}
-      <div className="shrink-0 border-t border-border-default p-2">
-        <div className="flex items-center gap-1">
+      {/* Padding and inner spacing match the nav above so the 设置 icon lands
+          on the same vertical line as 岗位总览 / 智能匹配 — it is the same kind
+          of entry, just parked at the bottom. */}
+      <div className="shrink-0 border-t border-border-default px-3 py-2">
+        <div className="flex items-center gap-2">
           <Link
             href="/settings"
             className={cn(
-              "flex flex-1 items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-sm transition-colors",
+              "flex min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm transition-colors",
               pathname === "/settings"
                 ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)] font-medium"
                 : "text-text-secondary hover:bg-[var(--nav-hover-bg)] hover:text-text-primary",
             )}
           >
             <Settings className="h-4 w-4 shrink-0" />
-            <span>设置</span>
+            <span className="truncate">设置</span>
           </Link>
-          <ThemeToggle />
+          {/* Boxed to the nav row's height so the two sit on one baseline
+              rather than the shorter switch floating beside a taller pill. */}
+          <div className="flex h-9 shrink-0 items-center">
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </aside>
