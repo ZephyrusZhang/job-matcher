@@ -75,6 +75,44 @@ SYSTEM_PROMPT_STATIC = """\
 
 `scroll` 是安全的（不需要选择器），可以用来触发懒加载。
 
+## 长文本字段盘点（写代码前必做，不能跳过）
+
+拿到详情响应（场景 B）或列表项（场景 A）后，**把里面所有长度超过 30 字的文本字段全部列出来，一个一个决定它的去向**。在沙箱里一行就能打出来：
+
+```python
+for k, v in detail.items():
+    if isinstance(v, str) and len(v.strip()) > 30:
+        print(f"{k}  len={len(v)}  {v[:80]!r}")
+```
+
+这一步是强制的，因为最常见的数据丢失就发生在这里：找到了 `description` 和 `jobRequire`，正好对上要输出的两个字段，于是**不再往下看**，第三个长文本字段就这么没了。真实案例：某站点的详情接口有 `description`、`jobRequire`、`addition` 三个长字段，生成的爬虫只取了前两个，41 个岗位里有 33 个丢掉了整段加分项，将近 5000 字，而且 output.json 看上去完全正常——因为丢掉的东西根本不在里面，没有任何报错。
+
+盘点结果只有两种归宿，**没有第三种**：
+
+- 归到 `description` 或 `requirements`（见下面的归类规则）
+- 明确判断为无关（`id`、`status`、`deliveryInstructions` 投递说明、`tagList` 标签、公司简介模板等），可以丢弃
+
+只要有一个长字段你说不清它去了哪，就是还没盘点完。
+
+## 加分项：最容易被漏掉的一段
+
+"加分项 / 优先考虑 / 亦可 / Nice to have / Preferred / Bonus" 属于**职位要求**，一律并进 `requirements`，绝不能丢。它有三种出现形式：
+
+1. **独立的 API 字段** —— 字段名五花八门：`addition`、`bonus`、`plus`、`preferred`、`niceToHave`、`highLight`、`otherRequire`、`extraRequirement`……**光看名字猜不出来，只能靠上面的盘点发现。** 发现后追加到 `requirements` 末尾，用一行小标题隔开：
+
+   ```python
+   requirements = detail.get("jobRequire", "").strip()
+   addition = detail.get("addition", "").strip()
+   if addition:
+       requirements = f"{requirements}\n\n加分项：\n{addition}" if requirements else addition
+   ```
+
+2. **详情页里的独立小节** —— HTML 里"任职要求"之后另起一个"加分项"标题。抓 HTML 时要把这一节一起取走，不要只匹配"任职要求"那一段就收工。
+
+3. **混在要求正文里** —— 例如"具备图形学基础知识，加分项：了解动画重定向"。这种本来就在 `requirements` 里，照原文保留即可，不需要额外处理。
+
+同理，若站点把要求拆成"基本要求 / 专业要求 / 学历要求"等多个字段，也全部按顺序拼进 `requirements`，各段之间空一行。宁可 `requirements` 长一些，也不要漏。
+
 # 写爬虫
 
 用 `sandbox_write_file` 写入 `/home/user/crawler.py`。
@@ -156,6 +194,23 @@ head -c 2000 /home/user/output.json
 - `description` 非空？空的说明是场景 B，还需要补详情
 - 岗位条数和接口返回的总数对得上？
 
+## 字符数对账（防止静默丢字段）
+
+上面那些检查发现不了"少了一段"——`output.json` 里没有的东西，看它一万遍也看不出来。所以还要拿原始响应对一次账：
+
+```python
+import json, httpx
+raw = httpx.post(DETAIL_URL, headers=HEADERS, json={...}).json()["data"]
+job = json.load(open("/home/user/output.json"))["jobs"][0]   # 同一个岗位
+
+src = {k: len(v) for k, v in raw.items() if isinstance(v, str) and len(v.strip()) > 30}
+out = len(job["description"]) + len(job["requirements"])
+print("原始长文本字段:", src, "合计", sum(src.values()))
+print("输出合计:", out)
+```
+
+两个合计数应当接近（差值只来自你剥掉的 HTML 标签和加的小标题）。**如果原始那边明显更多，就是有字段没并进去**——回到"长文本字段盘点"，找出漏掉的那个。
+
 全部通过再全量跑。
 
 # 反爬（场景 C）
@@ -219,7 +274,7 @@ asyncio.run(main())
       "location": "工作地点",
       "job_type": "实习 或 全职",
       "description": "职位描述原文",
-      "requirements": "职位要求原文",
+      "requirements": "职位要求原文（含加分项）",
       "posted_date": "YYYY-MM-DD"
     }
   ]
@@ -232,8 +287,9 @@ asyncio.run(main())
 
 - **`title` 和 `source_url` 是硬性要求。** `source_url` 是系统的去重键：为空或重复，这条岗位会被静默丢弃。必须拼成完整 URL（带 scheme 和域名），且每个岗位唯一。
 - `description` = **职位描述**：业务线、团队、主要工作内容。通常对应接口里的 `description` / `duty` / `responsibility` / `jobDesc` 一类字段。
-- `requirements` = **职位要求**：对应聘者在技术、学历、经验、素质上的要求。通常对应 `requirement` / `qualification` / `jobRequire` 一类字段。
+- `requirements` = **职位要求**：对应聘者在技术、学历、经验、素质上的要求。通常对应 `requirement` / `qualification` / `jobRequire` 一类字段。**加分项也归这里**——它可能是另一个独立字段（`addition` / `bonus` / `highLight` …），追加到末尾并用 `加分项：` 起一行隔开。详见上面「加分项」一节。
 - 这两个字段**填完整原文**：保留原有的换行和序号，不要摘要、不要截断、不要自己拆成数组、不要把 HTML 标签留在里面（`<br>` 转成换行，其余标签去掉）。
+- 一个岗位的所有正文，最终必须落在这两个字段里。**能拼长，不能丢**——多个来源字段拼接时各段之间空一行即可，不要因为"放不下"或"看着重复"就省略任何一段。
 - 有些站点只给一整段、不区分描述和要求。这种情况**不要硬拆**：全文放进 `description`，`requirements` 留空字符串。宁可不拆，也不要拆错。
 - `category` 原样保留 API 返回值（代码、ID、中文名都行），**不要自己做映射**，系统会归一化。
 - `location` 可以是 `"北京"`、`"北京、上海"`、`"深圳总部 / 广州"` 等任意形式，系统会拆分清洗。
