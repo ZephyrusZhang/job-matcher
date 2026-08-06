@@ -19,8 +19,8 @@ from app.crawl.location import normalize_location
 logger = logging.getLogger(__name__)
 
 
-def compute_content_hash(title: str, responsibilities: str, requirements_must: list[str]) -> str:
-    payload = f"{title}|{responsibilities}|{'|'.join(sorted(requirements_must))}"
+def compute_content_hash(title: str, description: str, requirements: str) -> str:
+    payload = f"{title}|{description}|{requirements}"
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -29,48 +29,40 @@ def normalize_job(
     company_id: str,
     generic_cache: dict | None = None,
 ) -> dict:
-    """Normalize crawler output into the DB schema."""
-    title = raw_job.get("title", "")
-    responsibilities = raw_job.get("responsibilities", "")
-    requirements_str = raw_job.get("requirements", "")
+    """Normalize crawler output into the DB schema.
 
-    # Parse requirements string into list
-    requirements_must = []
-    if requirements_str:
-        for line in requirements_str.replace("；", "\n").replace(";", "\n").split("\n"):
-            line = line.strip().lstrip("0123456789.、- ")
-            if line:
-                requirements_must.append(line)
+    ``description`` also accepts the old ``responsibilities`` key: crawler
+    scripts generated before the schema change are cached in ``crawler_scripts``
+    and still run unmodified whenever a crawl is triggered in ``cached`` mode.
+    """
+    title = raw_job.get("title", "")
+    description = raw_job.get("description") or raw_job.get("responsibilities") or ""
+    requirements = raw_job.get("requirements") or ""
+
+    # A pre-migration script may still emit the old JSON-array shape.
+    if isinstance(requirements, list):
+        requirements = "\n".join(str(item) for item in requirements if item)
 
     raw_category = raw_job.get("category", "")
     category = normalize_category(
         raw_category,
+        description=description,
         title=title,
-        responsibilities=responsibilities,
         generic_cache=generic_cache,
     )
     location = normalize_location(raw_job.get("location"))
     raw_job_type = raw_job.get("job_type")
-    department = raw_job.get("department")
-    department_product = raw_job.get("department_product")
-    education = raw_job.get("education")
-    experience = raw_job.get("experience")
     posted_date = raw_job.get("posted_date") or raw_job.get("post_date")
     source_url = raw_job.get("source_url", "")
-    summary = raw_job.get("summary")
 
     # For XHS-style data with raw field: assume 实习 when nothing else is set
     if "raw" in raw_job and not raw_job_type:
         raw_job_type = "实习"
 
     # Normalize job_type → one of ["实习", "全职"]
-    job_type = normalize_job_type(
-        raw_job_type,
-        title=title,
-        responsibilities=responsibilities,
-    )
+    job_type = normalize_job_type(raw_job_type, title=title, description=description)
 
-    content_hash = compute_content_hash(title, responsibilities, requirements_must)
+    content_hash = compute_content_hash(title, description, requirements)
 
     return {
         "id": str(uuid.uuid4()),
@@ -79,16 +71,10 @@ def normalize_job(
         "category": category,
         "location": location,
         "job_type": job_type,
-        "responsibilities": responsibilities,
-        "requirements_must": requirements_must,
-        "requirements_nice": [],
-        "department": department,
-        "department_product": department_product,
-        "education": education,
-        "experience": experience,
+        "description": description,
+        "requirements": requirements,
         "posted_date": posted_date,
         "source_url": source_url,
-        "summary": summary,
         "content_hash": content_hash,
     }
 
@@ -138,21 +124,15 @@ async def store_jobs(
         await db.execute(
             """
             INSERT INTO jobs (id, company_id, title, category, location, job_type,
-                             responsibilities, requirements_must, requirements_nice,
-                             department, department_product, education, experience,
-                             posted_date, source_url, summary, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             description, requirements, posted_date, source_url,
+                             content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job["id"], job["company_id"], job["title"], job["category"],
                 json.dumps(job["location"], ensure_ascii=False),
-                job["job_type"], job["responsibilities"],
-                json.dumps(job["requirements_must"], ensure_ascii=False),
-                json.dumps(job["requirements_nice"], ensure_ascii=False),
-                job["department"], job["department_product"],
-                job["education"], job["experience"],
-                job["posted_date"], job["source_url"],
-                job["summary"], job["content_hash"],
+                job["job_type"], job["description"], job["requirements"],
+                job["posted_date"], job["source_url"], job["content_hash"],
             ),
         )
         jobs_new += 1

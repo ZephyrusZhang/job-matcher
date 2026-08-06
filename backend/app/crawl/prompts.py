@@ -153,7 +153,7 @@ head -c 2000 /home/user/output.json
 
 - `title`、`location`、`source_url` 非空？
 - `source_url` 每条**都不一样**？（重要：系统按 `source_url` 去重，重复或为空的会被直接丢弃，100 条可能只入库 1 条）
-- `responsibilities` / `requirements` 非空？空的说明是场景 B，还需要补详情
+- `description` 非空？空的说明是场景 B，还需要补详情
 - 岗位条数和接口返回的总数对得上？
 
 全部通过再全量跑。
@@ -218,26 +218,27 @@ asyncio.run(main())
       "category": "岗位类别（原样保留 API 返回值）",
       "location": "工作地点",
       "job_type": "实习 或 全职",
-      "responsibilities": "岗位职责（完整文本）",
-      "requirements": "任职要求（完整文本）",
-      "department": "所属部门",
-      "education": "学历要求",
-      "experience": "经验要求",
+      "description": "职位描述原文",
+      "requirements": "职位要求原文",
       "posted_date": "YYYY-MM-DD"
     }
   ]
 }
 ```
 
+**只需要这 8 个字段，不要多写。** 多出来的字段（`id`、`company`、`salary`、`department`、`education`、`experience`、`raw` 等）不会被读取，只会让 output.json 白白膨胀。
+
 字段规则：
 
 - **`title` 和 `source_url` 是硬性要求。** `source_url` 是系统的去重键：为空或重复，这条岗位会被静默丢弃。必须拼成完整 URL（带 scheme 和域名），且每个岗位唯一。
+- `description` = **职位描述**：业务线、团队、主要工作内容。通常对应接口里的 `description` / `duty` / `responsibility` / `jobDesc` 一类字段。
+- `requirements` = **职位要求**：对应聘者在技术、学历、经验、素质上的要求。通常对应 `requirement` / `qualification` / `jobRequire` 一类字段。
+- 这两个字段**填完整原文**：保留原有的换行和序号，不要摘要、不要截断、不要自己拆成数组、不要把 HTML 标签留在里面（`<br>` 转成换行，其余标签去掉）。
+- 有些站点只给一整段、不区分描述和要求。这种情况**不要硬拆**：全文放进 `description`，`requirements` 留空字符串。宁可不拆，也不要拆错。
 - `category` 原样保留 API 返回值（代码、ID、中文名都行），**不要自己做映射**，系统会归一化。
 - `location` 可以是 `"北京"`、`"北京、上海"`、`"深圳总部 / 广州"` 等任意形式，系统会拆分清洗。
-- `job_type` 只填 `实习` 或 `全职`。判断依据优先级：接口里的招聘类型字段 > 岗位标题里有没有"实习/intern" > 目标页面本身是什么专场（比如 URL 里带 `实习` 批次就填 `实习`）。
-- `responsibilities` / `requirements` 填**完整原文**，不要摘要、不要截断。系统会按行拆分 `requirements`。
-- 其余字段拿不到就填空字符串 `""`，不要填 `null`，不要整个省略。
-- 不需要 `raw` 字段，也不要把整个 API 原始响应塞进去——它不会被使用，只会让 output.json 膨胀好几倍。
+- `job_type` 只填 `实习` 或 `全职`。判断依据优先级：接口里的招聘类型字段 > 岗位标题里有没有"实习/intern" > 目标页面本身是什么专场（比如 URL 里带实习批次就填 `实习`）。
+- 拿不到的字段填空字符串 `""`，不要填 `null`，不要整个省略。
 
 # 行为约束
 

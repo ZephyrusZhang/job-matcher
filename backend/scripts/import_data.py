@@ -105,21 +105,15 @@ async def import_file(db: aiosqlite.Connection, file_path: Path, company_id: str
         await db.execute(
             """
             INSERT INTO jobs (id, company_id, title, category, location, job_type,
-                             responsibilities, requirements_must, requirements_nice,
-                             department, department_product, education, experience,
-                             posted_date, source_url, summary, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             description, requirements, posted_date, source_url,
+                             content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job["id"], job["company_id"], job["title"], job["category"],
                 json.dumps(job["location"], ensure_ascii=False),
-                job["job_type"], job["responsibilities"],
-                json.dumps(job["requirements_must"], ensure_ascii=False),
-                json.dumps(job["requirements_nice"], ensure_ascii=False),
-                job["department"], job["department_product"],
-                job["education"], job["experience"],
-                job["posted_date"], job["source_url"],
-                job["summary"], job["content_hash"],
+                job["job_type"], job["description"], job["requirements"],
+                job["posted_date"], job["source_url"], job["content_hash"],
             ),
         )
         inserted += 1

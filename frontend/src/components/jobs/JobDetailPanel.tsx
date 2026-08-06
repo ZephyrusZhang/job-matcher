@@ -92,54 +92,30 @@ function DetailContent({
       <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
         <Separator className="bg-border-subtle" />
 
-        {job.summary && (
+        {/* Both sections render the site's own text, so newlines are all the
+            structure there is — hence whitespace-pre-line rather than a list.
+            A site that does not separate the two puts everything in
+            description and leaves requirements empty. */}
+        {job.description && (
           <div className="space-y-2">
-            <SectionTitle color="bg-blue-500">职位概述</SectionTitle>
-            <p className="text-sm text-text-primary leading-relaxed">{job.summary}</p>
+            <SectionTitle color="bg-emerald-500">职位描述</SectionTitle>
+            <p className="text-sm text-text-primary leading-relaxed whitespace-pre-line">
+              {job.description}
+            </p>
           </div>
         )}
 
-        <div className="space-y-2">
-          <SectionTitle color="bg-emerald-500">核心职责</SectionTitle>
-          <p className="text-sm text-text-primary leading-relaxed whitespace-pre-line">
-            {job.responsibilities}
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <SectionTitle color="bg-orange-500">技术要求</SectionTitle>
-          {job.requirements.must_have.length > 0 && (
-            <div className="space-y-1.5">
-              {job.requirements.must_have.map((s, i) => (
-                <p key={i} className="text-sm text-text-primary leading-relaxed">{s}</p>
-              ))}
-            </div>
-          )}
-          {job.requirements.nice_to_have.length > 0 && (
-            <div className="space-y-1.5 mt-2">
-              {job.requirements.nice_to_have.map((s, i) => (
-                <p key={i} className="text-sm text-text-secondary leading-relaxed">{s}</p>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {(job.department || job.department_product) && (
+        {job.requirements && (
           <div className="space-y-2">
-            <SectionTitle color="bg-violet-500">团队与产品</SectionTitle>
-            {job.department && (
-              <p className="text-sm text-text-primary">
-                <span className="text-text-secondary">部门: </span>
-                {job.department}
-              </p>
-            )}
-            {job.department_product && (
-              <p className="text-sm text-text-primary">
-                <span className="text-text-secondary">产品: </span>
-                {job.department_product}
-              </p>
-            )}
+            <SectionTitle color="bg-orange-500">职位要求</SectionTitle>
+            <p className="text-sm text-text-primary leading-relaxed whitespace-pre-line">
+              {job.requirements}
+            </p>
           </div>
+        )}
+
+        {!job.description && !job.requirements && (
+          <p className="text-sm text-text-muted">该岗位暂无详细描述，可通过下方原始链接查看。</p>
         )}
       </div>
 

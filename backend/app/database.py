@@ -15,26 +15,28 @@ CREATE TABLE IF NOT EXISTS companies (
     updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- A posting's prose is exactly two fields, both stored as the site's own text.
+-- The earlier split (responsibilities / requirements_must / requirements_nice /
+-- department / department_product / education / experience) asked crawlers to
+-- classify prose that careers sites do not actually separate: 5 of those 7
+-- columns were NULL for all 1946 rows, and the two that were populated were a
+-- verbatim paragraph and that same paragraph split on newlines.
 CREATE TABLE IF NOT EXISTS jobs (
-    id                 TEXT PRIMARY KEY,
-    company_id         TEXT NOT NULL,
-    title              TEXT NOT NULL,
-    category           TEXT NOT NULL,
-    location           TEXT,
-    job_type           TEXT,
-    responsibilities   TEXT,
-    requirements_must  TEXT,
-    requirements_nice  TEXT,
-    department         TEXT,
-    department_product TEXT,
-    education          TEXT,
-    experience         TEXT,
-    posted_date        TEXT,
-    source_url         TEXT NOT NULL,
-    summary            TEXT,
-    content_hash       TEXT NOT NULL,
-    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+    id           TEXT PRIMARY KEY,
+    company_id   TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    category     TEXT NOT NULL,
+    location     TEXT,
+    job_type     TEXT,
+    -- 职位描述: business line, team, what the job involves.
+    description  TEXT,
+    -- 职位要求: what is expected of the applicant.
+    requirements TEXT,
+    posted_date  TEXT,
+    source_url   TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_company      ON jobs(company_id);

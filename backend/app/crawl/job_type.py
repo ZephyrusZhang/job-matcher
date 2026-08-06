@@ -65,14 +65,14 @@ def _match_keyword(raw_lower: str) -> str | None:
 def normalize_job_type(
     raw_job_type: str | None,
     title: str = "",
-    responsibilities: str = "",
+    description: str = "",
 ) -> str:
     """Normalize a raw job_type string to one of the 2 standard types.
 
     Strategy (parallels ``normalize_category``):
       1. Direct match in STANDARD_JOB_TYPES.
       2. Keyword map lookup (exact → substring).
-      3. Title / responsibilities heuristic — if they mention 实习/intern, treat as 实习.
+      3. Title / description heuristic — if they mention 实习/intern, treat as 实习.
       4. Default to 全职 (the majority of crawled postings).
 
     No LLM call is made here: the binary classification space + tiny keyword
@@ -81,7 +81,7 @@ def normalize_job_type(
     Args:
         raw_job_type: Raw job_type value from the crawler (may be None / empty).
         title: Job title, used as fallback context.
-        responsibilities: Job responsibilities, used as fallback context.
+        description: Job description, used as fallback context.
 
     Returns:
         Either "实习" or "全职". Never returns None — job_type is non-nullable
@@ -98,13 +98,13 @@ def normalize_job_type(
         if mapped:
             return mapped
 
-    # Step 3: infer from title / responsibilities
+    # Step 3: infer from title / description
     title_lower = (title or "").lower()
     for kw in _INTERN_TITLE_KEYWORDS:
         if kw in title_lower:
             return "实习"
 
-    resp_lower = (responsibilities or "").lower()
+    resp_lower = (description or "").lower()
     # Only the most unambiguous markers — avoid false positives from descriptions
     # that merely mention internships in passing.
     if "实习生" in resp_lower or "intern" in resp_lower[:200]:

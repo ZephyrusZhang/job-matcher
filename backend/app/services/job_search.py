@@ -22,7 +22,6 @@ SUMMARY_CHARS = 90
 # Title matches are what users actually mean; body matches are weak evidence.
 WEIGHT_TITLE = 6
 WEIGHT_CATEGORY = 3
-WEIGHT_DEPARTMENT = 2
 WEIGHT_BODY = 1
 
 _TOKEN_SPLIT = re.compile(r"[\s,，、/|]+")
@@ -48,22 +47,15 @@ def _decode_location(raw: str | None) -> list[str]:
     return [str(value)]
 
 
-def _decode_list(raw: str | None) -> list[str]:
-    """Decode a JSON-array text column."""
-    if not raw:
-        return []
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-    return [str(v) for v in value] if isinstance(value, list) else []
-
-
 def compress(row: aiosqlite.Row | dict) -> dict:
-    """Reduce a job row to the compact view the agent reasons over."""
+    """Reduce a job row to the compact view the agent reasons over.
+
+    ``summary`` is derived from the head of the description rather than stored:
+    the column that used to hold it was NULL on every row, so every compact view
+    fell through to this same truncation anyway.
+    """
     data = dict(row)
-    summary = (data.get("summary") or data.get("responsibilities") or "").strip()
-    summary = " ".join(summary.split())
+    summary = " ".join((data.get("description") or "").split())
     if len(summary) > SUMMARY_CHARS:
         summary = summary[:SUMMARY_CHARS] + "…"
 
@@ -74,14 +66,12 @@ def compress(row: aiosqlite.Row | dict) -> dict:
         "category": data.get("category", ""),
         "location": _decode_location(data.get("location")),
         "job_type": data.get("job_type") or "",
-        "education": data.get("education") or "",
-        "experience": data.get("experience") or "",
         "summary": summary,
     }
 
 
 def expand(row: aiosqlite.Row | dict) -> dict:
-    """Return the full job detail, decoding JSON columns."""
+    """Return the full job detail."""
     data = dict(row)
     return {
         "id": data["id"],
@@ -90,14 +80,9 @@ def expand(row: aiosqlite.Row | dict) -> dict:
         "category": data.get("category", ""),
         "location": _decode_location(data.get("location")),
         "job_type": data.get("job_type") or "",
-        "department": data.get("department") or "",
-        "education": data.get("education") or "",
-        "experience": data.get("experience") or "",
         "posted_date": data.get("posted_date") or "",
-        "responsibilities": data.get("responsibilities") or "",
-        "requirements_must": _decode_list(data.get("requirements_must")),
-        "requirements_nice": _decode_list(data.get("requirements_nice")),
-        "summary": data.get("summary") or "",
+        "description": data.get("description") or "",
+        "requirements": data.get("requirements") or "",
         "source_url": data.get("source_url") or "",
     }
 
@@ -197,8 +182,7 @@ async def search_jobs(
 
     sql = f"""
         SELECT j.id, j.company_id, j.title, j.category, j.location, j.job_type,
-               j.department, j.education, j.experience, j.summary, j.responsibilities,
-               j.requirements_must
+               j.description, j.requirements
         {from_sql}
         WHERE {where}
     """
@@ -216,10 +200,8 @@ async def search_jobs(
     for row in rows:
         title = (row.get("title") or "").lower()
         category = (row.get("category") or "").lower()
-        department = (row.get("department") or "").lower()
         body = " ".join(
-            str(row.get(field) or "")
-            for field in ("summary", "responsibilities", "requirements_must")
+            str(row.get(field) or "") for field in ("description", "requirements")
         ).lower()
 
         score = 0
@@ -229,8 +211,6 @@ async def search_jobs(
                 score += WEIGHT_TITLE
             if t in category:
                 score += WEIGHT_CATEGORY
-            if t in department:
-                score += WEIGHT_DEPARTMENT
             if t in body:
                 score += WEIGHT_BODY
 
@@ -252,7 +232,7 @@ async def list_favorites(db: aiosqlite.Connection, company_id: str | None = None
     """Return favourited jobs as compact views."""
     sql = """
         SELECT j.id, j.company_id, j.title, j.category, j.location, j.job_type,
-               j.education, j.experience, j.summary, j.responsibilities
+               j.description
         FROM favorites f JOIN jobs j ON j.id = f.job_id
     """
     params: list[Any] = []

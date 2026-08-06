@@ -179,7 +179,7 @@ _KEYWORD_MAP: dict[str, str] = {
 # ── 泛化 category 标记词 ──
 # 包含这些词的 category 都被视为泛化（不同岗位可能映射到不同标准类别）
 # 例：'技术类'、'技术类-软件'、'技术类-算法,硬件' 都因含 '技术' 而被识别
-# 对这些 category，每次都用 title + responsibilities 调用 LLM，结果不缓存
+# 对这些 category，每次都用 title + description 调用 LLM，结果不缓存
 _GENERIC_TOKENS: tuple[str, ...] = (
     "技术类",
     "技术 -",
@@ -239,10 +239,10 @@ _CLASSIFY_MODEL = "deepseek-chat"
 _CLASSIFY_MAX_RETRIES = 3
 
 
-def _llm_classify(raw_category: str, title: str = "", responsibilities: str = "") -> str | None:
+def _llm_classify(raw_category: str, title: str = "", description: str = "") -> str | None:
     """Use LLM to classify a job into a standard category.
 
-    Sends category + title + responsibilities as context so the LLM can
+    Sends category + title + description as context so the LLM can
     classify even when category is an opaque code (e.g. "j1007").
 
     Returns:
@@ -271,8 +271,8 @@ def _llm_classify(raw_category: str, title: str = "", responsibilities: str = ""
     parts = [f"category: {raw_category}"]
     if title:
         parts.append(f"title: {title}")
-    if responsibilities:
-        parts.append(f"responsibilities: {responsibilities[:300]}")
+    if description:
+        parts.append(f"description: {description[:300]}")
     user_content = "\n".join(parts)
 
     last_error = None
@@ -286,7 +286,7 @@ def _llm_classify(raw_category: str, title: str = "", responsibilities: str = ""
                         "content": (
                             f"你是一个技术岗位分类器。根据提供的岗位信息，将其归类到以下标准类别之一：\n"
                             f"{categories_str}\n\n"
-                            f"注意：category 字段可能是内部代码（如 j1007、10001），此时请根据 title 和 responsibilities 来判断。\n"
+                            f"注意：category 字段可能是内部代码（如 j1007、10001），此时请根据 title 和 description 来判断。\n"
                             f"如果是非技术岗位（如产品、设计、运营、市场、销售），返回 null。\n"
                             f"只返回 JSON：{{\"category\": \"标准类别名\"}} 或 {{\"category\": null}}"
                         ),
@@ -322,7 +322,7 @@ def _llm_classify_batch(items: list[dict]) -> list[str | None]:
     """Classify multiple jobs in a single LLM call.
 
     Args:
-        items: list of dicts with keys: raw_category, title, responsibilities.
+        items: list of dicts with keys: raw_category, title, description.
 
     Returns:
         list of standard category names (or None for non-tech), same order as input.
@@ -351,8 +351,8 @@ def _llm_classify_batch(items: list[dict]) -> list[str | None]:
         parts = [f"category={item['raw_category']!r}"]
         if item.get("title"):
             parts.append(f"title={item['title']!r}")
-        if item.get("responsibilities"):
-            parts.append(f"responsibilities={item['responsibilities'][:200]!r}")
+        if item.get("description"):
+            parts.append(f"description={item['description'][:200]!r}")
         lines.append(f"[{i}] " + " | ".join(parts))
     user_content = "\n".join(lines)
 
@@ -369,7 +369,7 @@ def _llm_classify_batch(items: list[dict]) -> list[str | None]:
                             f"请把每一个分类到以下标准类别之一：\n"
                             f"{categories_str}\n\n"
                             f"注意：category 字段可能是内部代码或泛词（如 j1007、技术类-软件），"
-                            f"此时请根据 title 和 responsibilities 来判断。\n"
+                            f"此时请根据 title 和 description 来判断。\n"
                             f"如果是非技术岗位（产品、设计、运营、市场、销售等），category 设为 null。\n"
                             f"严格只返回 JSON："
                             f'{{"results": [{{"index": 0, "category": "标准类别名"}}, ...]}}\n'
@@ -448,14 +448,17 @@ def prebatch_classify(
     for raw_job in raw_jobs:
         raw_cat = raw_job.get("category", "") or ""
         title = raw_job.get("title", "") or ""
-        responsibilities = raw_job.get("responsibilities", "") or ""
+        # Cached crawler scripts predating the schema change still emit
+        # `responsibilities`; without the fallback they would classify on the
+        # title alone.
+        description = raw_job.get("description") or raw_job.get("responsibilities") or ""
         raw_lower = raw_cat.strip().lower()
-        # Treat empty category same as generic: depend on title/responsibilities for LLM
+        # Treat empty category same as generic: depend on title/description for LLM
         is_generic = (not raw_cat) or _is_generic_category(raw_lower)
 
         if is_generic:
             # Generic: dedupe by (raw_lower, title)
-            if not title and not responsibilities:
+            if not title and not description:
                 continue  # skip — can't classify without context
             key = (raw_lower, title)
             if key in pending_keys_seen:
@@ -466,7 +469,7 @@ def prebatch_classify(
                 "is_generic": True,
                 "raw_category": raw_cat,
                 "title": title,
-                "responsibilities": responsibilities,
+                "description": description,
             })
         else:
             # Non-generic: skip if already resolvable from standard / keyword / cache
@@ -485,7 +488,7 @@ def prebatch_classify(
                 "is_generic": False,
                 "raw_category": raw_cat,
                 "title": title,
-                "responsibilities": responsibilities,
+                "description": description,
             })
 
     total = len(pending)
@@ -519,7 +522,7 @@ def prebatch_classify(
 def normalize_category(
     raw_category: str,
     title: str = "",
-    responsibilities: str = "",
+    description: str = "",
     generic_cache: dict[tuple[str, str], str | None] | None = None,
 ) -> str | None:
     """Normalize a raw category string to one of the 15 standard categories.
@@ -527,14 +530,14 @@ def normalize_category(
     Args:
         raw_category: The raw category value (may be readable text OR an opaque code).
         title: Job title, used as context for LLM classification.
-        responsibilities: Job responsibilities, used as context for LLM classification.
+        description: Job description, used as context for LLM classification.
         generic_cache: Optional dict from prebatch_classify for generic categories.
 
     Returns:
         Standard category name, or None if non-tech.
     """
     # Empty raw category: fall through to the "generic" path so we can still
-    # classify using title/responsibilities (some crawlers don't return category).
+    # classify using title/description (some crawlers don't return category).
     raw_lower = raw_category.strip().lower() if raw_category else ""
     is_generic = (not raw_category) or _is_generic_category(raw_lower)
 
@@ -542,9 +545,9 @@ def normalize_category(
     # doesn't determine the standard class — the answer depends on the title.
     # Skip keyword/cache lookup entirely and go straight to LLM with full context.
     if is_generic:
-        if not title and not responsibilities:
+        if not title and not description:
             logger.warning(
-                f"Generic category '{raw_category}' has no title/responsibilities context, "
+                f"Generic category '{raw_category}' has no title/description context, "
                 "cannot classify reliably."
             )
             return None
@@ -557,7 +560,7 @@ def normalize_category(
         logger.info(
             f"Generic category '{raw_category}' — calling LLM with title='{title[:40]}'"
         )
-        return _llm_classify(raw_category, title=title, responsibilities=responsibilities)
+        return _llm_classify(raw_category, title=title, description=description)
 
     # Step 1: Direct match in standard categories
     if raw_category in STANDARD_CATEGORIES:
@@ -575,7 +578,7 @@ def normalize_category(
 
     # Step 4: LLM fallback (slow path — prebatch_classify should have handled this)
     logger.info(f"Category '{raw_category}' not in mapping, calling LLM with context...")
-    result = _llm_classify(raw_category, title=title, responsibilities=responsibilities)
+    result = _llm_classify(raw_category, title=title, description=description)
 
     # Cache the result (keyed by raw category value, including codes)
     with _cache_lock:

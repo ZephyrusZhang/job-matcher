@@ -251,15 +251,10 @@ def build_prompt(captured: list[dict], target_url: str) -> str:
   "category": "岗位方向 - 所属技术方向（如算法、后端、前端、机器学习等）",
   "location": "工作地点 - 城市 / 远程 / 混合办公",
   "job_type": "岗位类型 - 只能是 '实习' 或 '全职' 两个值之一（其他如兼职/合同工统一归为 全职）",
-  "responsibilities": "核心职责 - 岗位的主要工作内容描述（保留原文换行）",
-  "requirements": "技术要求 - 必备技能与加分技能（保留原文换行）",
-  "department": "所属部门 - 该岗位所在的业务部门缩写或代号",
-  "department_product": "部门产品 - 该部门负责的主要产品或业务线全称",
-  "education": "学历要求 - 最低学历要求",
-  "experience": "经验要求 - 所需工作经验描述",
+  "description": "职位描述 - 业务线、团队、主要工作内容（保留原文换行）",
+  "requirements": "职位要求 - 对应聘者的技术与素质要求（保留原文换行）",
   "posted_date": "发布日期 - 岗位上线时间（ISO 格式或原始格式）",
-  "source_url": "原始链接 - 跳转至公司官方招聘页面的链接",
-  "summary": "一句话总结 - 用简短的一句话概括该岗位的核心内容"
+  "source_url": "原始链接 - 跳转至公司官方招聘页面的链接"
 }}
 ```
 

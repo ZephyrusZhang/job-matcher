@@ -59,7 +59,9 @@ Services are module-level singletons created once in `dependencies.py::init_serv
 
 ### Schema notes
 
-Tables are created by `_CREATE_TABLES_SQL` in `app/database.py` — there is no migration framework, so schema changes mean editing that DDL plus a hand-written script in `backend/scripts/`. Several columns hold JSON-encoded text: `jobs.location` is a JSON array (filtering uses `LIKE '%"城市"%'`), `requirements_must`/`requirements_nice` are JSON arrays, `reports.job_ids`/`preferences` are JSON. `reports` has `UNIQUE(company_id, report_type)`, so a regenerated report replaces the old one.
+Tables are created by `_CREATE_TABLES_SQL` in `app/database.py` — there is no migration framework, so schema changes mean editing that DDL plus a hand-written script in `backend/scripts/`. Several columns hold JSON-encoded text: `jobs.location` is a JSON array (filtering uses `LIKE '%"城市"%'`), `reports.job_ids`/`preferences` are JSON. `reports` has `UNIQUE(company_id, report_type)`, so a regenerated report replaces the old one.
+
+A posting's prose is exactly two plain-text columns, `jobs.description` (职位描述) and `jobs.requirements` (职位要求), both the careers site's own text with its newlines intact — no arrays, no HTML. They replaced a seven-column split (`responsibilities`, `requirements_must`, `requirements_nice`, `department`, `department_product`, `education`, `experience`, plus `summary`) that asked crawlers to separate prose careers sites do not separate: six of those columns were NULL on all 1946 rows. When a site publishes one undivided block, it goes in `description` and `requirements` stays empty — `scripts/migrate_job_description.py` converts an old database, and `normalize_job`/`prebatch_classify` still read the old `responsibilities` key so pre-migration cached crawler scripts keep working.
 
 `resumes` replaced the old singleton `resume` table (migration: `scripts/migrate_multi_resume.py`); exactly one row carries `is_default`, which is what `GET /api/resume` returns for `/compare`.
 

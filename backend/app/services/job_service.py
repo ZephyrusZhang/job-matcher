@@ -7,7 +7,7 @@ from app.crawl.location import normalize_location
 from app.exceptions import JobNotFoundError
 from app.models import job as job_model
 from app.schemas.common import PaginationMeta
-from app.schemas.job import CompanyBrief, JobOut, Requirements
+from app.schemas.job import CompanyBrief, JobOut
 from app.services.company_service import CompanyService
 
 
@@ -42,15 +42,7 @@ class JobService:
         self.company_service = company_service
 
     def _row_to_job(self, row: dict) -> JobOut:
-        must_have = row.get("requirements_must", "[]")
-        nice_to_have = row.get("requirements_nice", "[]")
-        if isinstance(must_have, str):
-            must_have = json.loads(must_have) if must_have else []
-        if isinstance(nice_to_have, str):
-            nice_to_have = json.loads(nice_to_have) if nice_to_have else []
-
         location = _parse_location_field(row.get("location"))
-
         company_name = self.company_service.get_company_name(row["company_id"]) or row["company_id"]
 
         return JobOut(
@@ -60,15 +52,10 @@ class JobService:
             company=CompanyBrief(id=row["company_id"], name=company_name),
             location=location,
             job_type=row.get("job_type"),
-            responsibilities=row.get("responsibilities"),
-            requirements=Requirements(must_have=must_have, nice_to_have=nice_to_have),
-            department=row.get("department"),
-            department_product=row.get("department_product"),
-            education=row.get("education"),
-            experience=row.get("experience"),
+            description=row.get("description"),
+            requirements=row.get("requirements"),
             posted_date=row.get("posted_date"),
             source_url=row["source_url"],
-            summary=row.get("summary"),
             is_favorited=bool(row.get("is_favorited", 0)),
             created_at=row["created_at"],
         )

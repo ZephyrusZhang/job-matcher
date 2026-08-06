@@ -193,7 +193,7 @@ async def _get_job_detail(job_id: str) -> str:
 get_job_detail = StructuredTool.from_function(
     coroutine=_get_job_detail,
     name="get_job_detail",
-    description="获取单个岗位的完整信息：职责、任职要求、部门、学历经验要求、原始链接。",
+    description="获取单个岗位的完整信息：职位描述、职位要求原文，以及城市、类型、发布日期、原始链接。",
     args_schema=JobDetailArgs,
 )
 

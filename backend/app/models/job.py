@@ -132,10 +132,10 @@ async def search_jobs(
     """Full-text search across multiple fields."""
     like_pattern = f"%{q}%"
     conditions = [
-        "(j.title LIKE ? OR j.responsibilities LIKE ? OR j.requirements_must LIKE ? "
-        "OR j.requirements_nice LIKE ? OR j.category LIKE ? OR j.department LIKE ?)"
+        "(j.title LIKE ? OR j.description LIKE ? OR j.requirements LIKE ? "
+        "OR j.category LIKE ?)"
     ]
-    params: list = [like_pattern] * 6
+    params: list = [like_pattern] * 4
 
     if company_id:
         conditions.append("j.company_id = ?")
@@ -189,21 +189,15 @@ async def insert_job(db: aiosqlite.Connection, job: dict) -> None:
     await db.execute(
         """
         INSERT INTO jobs (id, company_id, title, category, location, job_type,
-                         responsibilities, requirements_must, requirements_nice,
-                         department, department_product, education, experience,
-                         posted_date, source_url, summary, content_hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         description, requirements, posted_date, source_url,
+                         content_hash, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job["id"], job["company_id"], job["title"], job["category"],
             _serialize_location(job.get("location")), job.get("job_type"),
-            job.get("responsibilities"),
-            json.dumps(job.get("requirements_must", []), ensure_ascii=False),
-            json.dumps(job.get("requirements_nice", []), ensure_ascii=False),
-            job.get("department"), job.get("department_product"),
-            job.get("education"), job.get("experience"),
-            job.get("posted_date"), job["source_url"],
-            job.get("summary"), job["content_hash"],
+            job.get("description"), job.get("requirements"),
+            job.get("posted_date"), job["source_url"], job["content_hash"],
             job.get("created_at", datetime.now(timezone.utc).isoformat()),
             job.get("updated_at", datetime.now(timezone.utc).isoformat()),
         ),

@@ -56,6 +56,27 @@ async def test_job_detail(client):
 
 
 @pytest.mark.asyncio
+async def test_job_detail_carries_prose_as_two_plain_strings(client):
+    """A posting's text is description + requirements, and nothing else.
+
+    Pins the shape the frontend renders: both are the site's own text, so
+    neither may come back as the old ``{must_have, nice_to_have}`` object, and
+    none of the dropped columns may reappear.
+    """
+    resp = await client.get("/api/jobs/j1")
+    job = resp.json()["data"]
+
+    assert job["description"] == "前端开发"
+    assert job["requirements"] == "React"
+
+    dropped = {
+        "responsibilities", "requirements_must", "requirements_nice",
+        "department", "department_product", "education", "experience", "summary",
+    }
+    assert dropped.isdisjoint(job)
+
+
+@pytest.mark.asyncio
 async def test_job_not_found(client):
     resp = await client.get("/api/jobs/nonexistent")
     assert resp.status_code == 404

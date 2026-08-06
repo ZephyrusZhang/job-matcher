@@ -214,20 +214,12 @@
         "id": "bytedance",
         "name": "字节跳动"
       },
-      "location": "北京",
-      "job_type": "fulltime",
-      "responsibilities": "负责抖音前端界面的开发与性能优化...",
-      "requirements": {
-        "must_have": ["React", "TypeScript"],
-        "nice_to_have": ["GraphQL", "Webpack"]
-      },
-      "department": "抖音前端团队",
-      "department_product": "抖音",
-      "education": "本科及以上",
-      "experience": "2年以上",
+      "location": ["北京"],
+      "job_type": "全职",
+      "description": "团队介绍：...\n1、负责抖音前端界面的开发与性能优化；\n2、...",
+      "requirements": "本科及以上学历，计算机相关专业\n熟悉 React / TypeScript\n...",
       "posted_date": "2026-03-27",
       "source_url": "https://jobs.bytedance.com/position/123",
-      "summary": "负责抖音前端界面的开发与性能优化工作",
       "is_favorited": true,
       "created_at": "2026-03-27T10:00:00Z"
     }
@@ -250,17 +242,12 @@
 | `title` | `string` | 岗位名称 |
 | `category` | `string` | 岗位方向（算法/后端/前端/...） |
 | `company` | `object` | `{ id: string, name: string }` |
-| `location` | `string \| null` | 工作地点 |
-| `job_type` | `string \| null` | 岗位类型 |
-| `responsibilities` | `string` | 核心职责 |
-| `requirements` | `object` | `{ must_have: string[], nice_to_have: string[] }` |
-| `department` | `string \| null` | 所属部门 |
-| `department_product` | `string \| null` | 部门产品 |
-| `education` | `string \| null` | 学历要求 |
-| `experience` | `string \| null` | 经验要求 |
+| `location` | `string[]` | 工作城市，已归一化去重 |
+| `job_type` | `string \| null` | `实习` 或 `全职` |
+| `description` | `string \| null` | 职位描述原文，保留换行 |
+| `requirements` | `string \| null` | 职位要求原文，保留换行；网站不区分描述与要求时为空 |
 | `posted_date` | `string \| null` | 发布日期（ISO date） |
 | `source_url` | `string` | 原始链接 |
-| `summary` | `string \| null` | 一句话概述 |
 | `is_favorited` | `boolean` | 当前是否已收藏 |
 | `created_at` | `string` | 入库时间 |
 

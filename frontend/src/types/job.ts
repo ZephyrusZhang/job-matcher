@@ -5,15 +5,11 @@ export interface Job {
   company: { id: string; name: string }
   location: string[]
   job_type: string | null
-  responsibilities: string
-  requirements: { must_have: string[]; nice_to_have: string[] }
-  department: string | null
-  department_product: string | null
-  education: string | null
-  experience: string | null
+  /** 职位描述 and 职位要求, both the careers site's own text. */
+  description: string | null
+  requirements: string | null
   posted_date: string | null
   source_url: string
-  summary: string | null
   is_favorited: boolean
   created_at: string
 }
