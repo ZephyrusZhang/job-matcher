@@ -115,6 +115,40 @@ async def test_favorite_nonexistent_job(client):
 
 
 @pytest.mark.asyncio
+async def test_clear_company_jobs(client):
+    """Clearing empties one company and takes its favourites with it."""
+    await client.post("/api/favorites", json={"job_id": "j1"})
+
+    resp = await client.delete("/api/companies/bytedance/jobs")
+    assert resp.status_code == 200
+    assert resp.json()["data"] == {"deleted_jobs": 2, "deleted_favorites": 1}
+
+    # Gone, and the favourite went by cascade rather than being left dangling.
+    assert (await client.get("/api/jobs?company_id=bytedance")).json()["pagination"]["total"] == 0
+    assert (await client.get("/api/favorites")).json()["data"] == []
+
+    # Other companies are untouched, and the company row itself survives.
+    assert (await client.get("/api/jobs?company_id=tencent")).json()["pagination"]["total"] == 1
+    assert (await client.get("/api/jobs/j3")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_clear_company_jobs_is_idempotent(client):
+    await client.delete("/api/companies/bytedance/jobs")
+    resp = await client.delete("/api/companies/bytedance/jobs")
+    assert resp.status_code == 200
+    assert resp.json()["data"]["deleted_jobs"] == 0
+
+
+@pytest.mark.asyncio
+async def test_clear_jobs_of_unknown_company_is_404(client):
+    """Not a cheerful "0 deleted" — a typo'd id must be reported as one."""
+    resp = await client.delete("/api/companies/nope/jobs")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "COMPANY_NOT_FOUND"
+
+
+@pytest.mark.asyncio
 async def test_resume_empty(client):
     resp = await client.get("/api/resume")
     assert resp.status_code == 200

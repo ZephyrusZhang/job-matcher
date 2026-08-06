@@ -204,6 +204,27 @@ async def insert_job(db: aiosqlite.Connection, job: dict) -> None:
     )
 
 
+async def delete_by_company(db: aiosqlite.Connection, company_id: str) -> tuple[int, int]:
+    """Delete every job of a company. Returns ``(jobs_deleted, favorites_deleted)``.
+
+    ``favorites.job_id`` is declared ``ON DELETE CASCADE`` and ``get_db`` turns
+    foreign keys on per connection, so the favourites go with the jobs. They are
+    counted first because after the DELETE there is nothing left to count.
+    """
+    async with db.execute(
+        """SELECT COUNT(*) FROM favorites f
+           JOIN jobs j ON j.id = f.job_id
+           WHERE j.company_id = ?""",
+        (company_id,),
+    ) as cursor:
+        favorites = (await cursor.fetchone())[0]
+
+    cursor = await db.execute("DELETE FROM jobs WHERE company_id = ?", (company_id,))
+    deleted = cursor.rowcount
+    await db.commit()
+    return deleted, favorites
+
+
 async def get_company_location_rows(
     db: aiosqlite.Connection, company_id: str
 ) -> list[dict]:

@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends
 
 import aiosqlite
 
-from app.dependencies import get_company_service, get_database
+from app.dependencies import get_company_service, get_database, get_job_service
+from app.exceptions import CrawlInProgressError
+from app.models import crawl_task as task_model
 from app.models import crawler_script as script_model
 from app.schemas.common import ApiResponse
 from app.schemas.company import CompanyCreate, CompanyUpdate
 from app.schemas.crawler_script import CrawlerScriptUpdate
 from app.services.company_service import CompanyService
+from app.services.job_service import JobService
 
 router = APIRouter(tags=["companies"])
 
@@ -50,6 +53,25 @@ async def delete_company(
 ):
     await service.delete(db, company_id)
     return ApiResponse.ok(data=None)
+
+
+@router.delete("/companies/{company_id}/jobs")
+async def clear_company_jobs(
+    company_id: str,
+    db: aiosqlite.Connection = Depends(get_database),
+    service: JobService = Depends(get_job_service),
+):
+    """Delete every crawled job of a company, keeping the company itself.
+
+    Refused while a crawl is running: ``store_jobs`` would be inserting rows
+    into the table this is emptying, and the user would be left with whichever
+    half of the batch happened to land after the DELETE.
+    """
+    if await task_model.has_active_task(db, company_id):
+        raise CrawlInProgressError()
+
+    jobs, favorites = await service.clear_company_jobs(db, company_id)
+    return ApiResponse.ok(data={"deleted_jobs": jobs, "deleted_favorites": favorites})
 
 
 # ── Crawler Script endpoints ──

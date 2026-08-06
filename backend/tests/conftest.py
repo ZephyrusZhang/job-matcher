@@ -95,6 +95,21 @@ async def seeded_db(test_db):
     yield test_db
 
 
+@pytest.fixture(autouse=True)
+def no_real_crawls(monkeypatch):
+    """Make ``POST /api/crawl/trigger`` record a task without running one.
+
+    The crawl tests only assert the bookkeeping — 201, then 409 while a task is
+    active, then the task appearing in the list. Actually running the work would
+    drive a real browser, call the LLM and start a Docker sandbox, which is why
+    the suite hung the moment the company fixture started resolving.
+    """
+    async def noop(self, *args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.services.crawl_service.CrawlService._run_crawl", noop)
+
+
 @pytest_asyncio.fixture
 async def client(tmp_path):
     """HTTP test client with initialized app."""
@@ -104,10 +119,27 @@ async def client(tmp_path):
     config.uploads.dir = str(tmp_path / "uploads")
 
     await init_database(config.database)
+
+    # `init_database` seeds companies from `companies.yml` found relative to the
+    # database file, which for a tmp_path database resolves to nothing. Seed
+    # them here instead — without companies, `CompanyService`'s cache is empty
+    # and every endpoint that validates a company_id answers 404.
+    db = await get_db(config.database.path)
+    for company_id, name in (
+        ("bytedance", "字节跳动"),
+        ("tencent", "腾讯"),
+        ("alibaba", "阿里巴巴"),
+    ):
+        await db.execute(
+            "INSERT INTO companies (id, name, career_url) VALUES (?, ?, ?)",
+            (company_id, name, f"https://example.com/{company_id}/jobs"),
+        )
+    await db.commit()
+
+    # Services cache the companies table at startup, so they must be built after
+    # the seed rather than before it.
     await init_services(config, config.database.path)
 
-    # Seed some data
-    db = await get_db(config.database.path)
     jobs = [
         ("j1", "bytedance", "前端工程师", "前端", "北京", "全职",
          "前端开发", "React", "2026-03-27", "https://example.com/1", "h1"),

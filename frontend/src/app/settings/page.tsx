@@ -21,9 +21,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageContainer } from "@/components/layout/PageContainer"
-import { Plus, Trash2, Square, Pencil, X, Check, Code2 } from "lucide-react"
+import { Plus, Trash2, Square, Pencil, X, Check, Code2, Eraser } from "lucide-react"
 import type { Company, CompanyCreate } from "@/types/company"
-import { getCompanies, createCompany, updateCompany, deleteCompany } from "@/lib/api/companies"
+import { getCompanies, createCompany, updateCompany, deleteCompany, clearCompanyJobs } from "@/lib/api/companies"
+import { getFavoriteSummary } from "@/lib/api/favorites"
 import { triggerCrawl, cancelCrawlTask, getCrawlTasks } from "@/lib/api/crawl"
 import type { CrawlMode } from "@/types/crawl"
 import { CrawlerScriptEditor } from "@/components/settings/CrawlerScriptEditor"
@@ -89,6 +90,45 @@ function CrawlStatusBadge({ status }: { status: Company["crawl_status"] }) {
       )}
       {c.label}
     </span>
+  )
+}
+
+/** Clears a company's crawled jobs, leaving the company itself in place.
+ *
+ * Deliberately not styled like the neighbouring 删除 button: that one removes
+ * the company, this one only empties it, and two identical red icons a few
+ * pixels apart is how the wrong one gets clicked. Disabled with nothing to
+ * clear, and while a crawl is running — the backend refuses that case anyway,
+ * so a live button would only produce an error toast.
+ */
+function ClearJobsButton({
+  company,
+  disabled,
+  onClear,
+}: {
+  company: Company
+  disabled: boolean
+  onClear: (company: Company) => void
+}) {
+  const empty = company.job_count === 0
+  const title = empty
+    ? "暂无采集数据"
+    : disabled
+      ? "采集进行中，无法清除"
+      : `清除 ${company.job_count} 个岗位`
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      onClick={() => onClear(company)}
+      disabled={empty || disabled}
+      className="text-text-secondary hover:bg-amber-500/10 hover:text-amber-400 disabled:opacity-30"
+      title={title}
+      aria-label={title}
+    >
+      <Eraser className="size-3.5" />
+    </Button>
   )
 }
 
@@ -210,6 +250,38 @@ function SettingsPageContent() {
       await loadCompanies()
     } catch (err: any) {
       toast.error("删除失败", err?.message)
+    }
+  }
+
+  const handleClearJobs = async (company: Company) => {
+    // The favourite count is worth naming separately: it is the only part of
+    // this that the user hand-curated, and it disappears by cascade. A failure
+    // to look it up must not block the action, so fall back to zero and let the
+    // generic wording stand.
+    let favorites = 0
+    try {
+      const summary = await getFavoriteSummary()
+      favorites = summary.data.find((s) => s.company_id === company.id)?.count ?? 0
+    } catch {
+      favorites = 0
+    }
+
+    const ok = await confirmDialog({
+      title: "清除采集数据",
+      description:
+        `将删除「${company.name}」的全部 ${company.job_count} 个岗位` +
+        (favorites > 0 ? `，其中 ${favorites} 个已收藏的也会一并移除` : "") +
+        "。公司配置、爬虫脚本和采集历史都会保留，重新采集即可恢复。",
+      confirmLabel: "清除",
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      const res = await clearCompanyJobs(company.id)
+      toast.success(`已清除 ${res.data.deleted_jobs} 个岗位`)
+      await loadCompanies()
+    } catch (err) {
+      toast.error("清除失败", err instanceof Error ? err.message : undefined)
     }
   }
 
@@ -440,6 +512,7 @@ function SettingsPageContent() {
                   )}
                   <Button variant="ghost" size="icon-xs" onClick={() => setScriptEditorId(scriptEditorId === company.id ? null : company.id)} className={`hover:bg-neutral-800 ${scriptEditorId === company.id ? "text-blue-400" : "text-text-secondary hover:text-text-primary"}`} title="爬虫代码"><Code2 className="size-3.5" /></Button>
                   <Button variant="ghost" size="icon-xs" onClick={() => startEditing(company)} className="text-text-secondary hover:text-text-primary hover:bg-neutral-800" title="编辑"><Pencil className="size-3.5" /></Button>
+                  <ClearJobsButton company={company} disabled={isCrawlActive(company)} onClear={handleClearJobs} />
                   <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteCompany(company.id, company.name)} className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10" title="删除"><Trash2 className="size-3.5" /></Button>
                 </div>
               </div>
@@ -517,6 +590,7 @@ function SettingsPageContent() {
                             )}
                             <Button variant="ghost" size="icon-xs" onClick={() => setScriptEditorId(scriptEditorId === company.id ? null : company.id)} className={`hover:bg-neutral-800 ${scriptEditorId === company.id ? "text-blue-400" : "text-text-secondary hover:text-text-primary"}`} title="爬虫代码"><Code2 className="size-3.5" /></Button>
                             <Button variant="ghost" size="icon-xs" onClick={() => startEditing(company)} className="text-text-secondary hover:text-text-primary hover:bg-neutral-800" title="编辑"><Pencil className="size-3.5" /></Button>
+                            <ClearJobsButton company={company} disabled={isCrawlActive(company)} onClear={handleClearJobs} />
                             <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteCompany(company.id, company.name)} className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10" title="删除"><Trash2 className="size-3.5" /></Button>
                           </div>
                         </TableCell>

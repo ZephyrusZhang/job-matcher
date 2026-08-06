@@ -4,7 +4,7 @@ import math
 import aiosqlite
 
 from app.crawl.location import normalize_location
-from app.exceptions import JobNotFoundError
+from app.exceptions import CompanyNotFoundError, JobNotFoundError
 from app.models import job as job_model
 from app.schemas.common import PaginationMeta
 from app.schemas.job import CompanyBrief, JobOut
@@ -116,6 +116,23 @@ class JobService:
         self, db: aiosqlite.Connection, q: str, limit: int = 5
     ) -> list[str]:
         return await job_model.suggest_jobs(db, q, limit)
+
+    async def clear_company_jobs(
+        self, db: aiosqlite.Connection, company_id: str
+    ) -> tuple[int, int]:
+        """Delete a company's crawled jobs. Returns ``(jobs, favorites)`` removed.
+
+        Only the jobs go: the company row, its crawler script and its crawl
+        history all survive, so the next crawl starts from an empty listing
+        rather than from scratch.
+
+        Raises:
+            CompanyNotFoundError: When the company does not exist. Without the
+                check a typo'd id would report a cheerful "0 deleted".
+        """
+        if not self.company_service.has_company(company_id):
+            raise CompanyNotFoundError()
+        return await job_model.delete_by_company(db, company_id)
 
     async def get_locations(
         self, db: aiosqlite.Connection, company_id: str

@@ -32,6 +32,16 @@ export function deleteCompany(id: string) {
   return apiDelete<null>(`/api/companies/${id}`)
 }
 
+export interface ClearedJobs {
+  deleted_jobs: number
+  deleted_favorites: number
+}
+
+/** Delete a company's crawled jobs, keeping the company, its script and history. */
+export function clearCompanyJobs(id: string) {
+  return apiDelete<ClearedJobs>(`/api/companies/${id}/jobs`)
+}
+
 // Crawler script endpoints
 
 export interface CrawlerScript {
