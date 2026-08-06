@@ -13,10 +13,13 @@ retries, and cooperative cancellation.
 
 import json
 import threading
+from dataclasses import dataclass
 from typing import (
     Any,
     Optional,
 )
+
+from langchain_core.messages import AIMessage
 
 from app.core.langgraph import (
     AgentCancelled,
@@ -44,6 +47,48 @@ from app.schemas.agent import Message
 
 # Matches MAX_TURNS from the original loop.
 MAX_TURNS = 64
+
+
+@dataclass
+class CrawlOutcome:
+    """What one crawl produced, and enough context to say why when it produced nothing.
+
+    A crawl that returns no jobs used to be indistinguishable from a successful
+    one at the service layer, so an agent that burned through every turn without
+    writing a result was recorded as ``completed`` with 0 jobs — no error, no
+    retry, and the company's listing silently emptied.
+    """
+
+    jobs: list[dict]
+    code: Optional[str]
+    turns: int = 0
+    #: The agent wrote ``output.json`` at all. False means it never got there.
+    wrote_output: bool = False
+    max_turns: int = MAX_TURNS
+    error: Optional[str] = None
+    cancelled: bool = False
+
+    @property
+    def max_turns_reached(self) -> bool:
+        """Derived rather than stored, so it cannot disagree with ``turns``."""
+        return self.turns >= self.max_turns
+
+    def failure_reason(self) -> Optional[str]:
+        """Why this crawl is a failure, or ``None`` when it is not one.
+
+        An empty ``output.json`` is left as a success: a careers page with no
+        current openings is a real, if rare, answer.
+        """
+        if self.cancelled or self.wrote_output:
+            return None
+        if self.max_turns_reached:
+            return (
+                f"Agent 用尽 {self.turns} 轮仍未产出 output.json，"
+                "未能生成可用的爬虫脚本"
+            )
+        if self.error:
+            return f"Agent 运行失败：{self.error}"
+        return "Agent 结束时没有产出 output.json"
 
 # The original compacted history once the serialized conversation passed 100k
 # characters, keeping the most recent 16 messages intact.
@@ -106,12 +151,15 @@ class CrawlerAgent(BaseAgent):
         logger.info("crawl_history_compacted", original_chars=total, message_count=len(messages))
         return system + compacted
 
-    def read_output(self) -> list[dict]:
+    def read_output(self) -> Optional[list[dict]]:
         """Read ``/home/user/output.json`` from the sandbox.
 
         Returns:
-            The crawled job dicts, or an empty list when the file is missing or
-            malformed — matching the original ``_read_output`` behaviour.
+            The crawled job dicts, or ``None`` when the file is missing or
+            malformed. That distinction matters: an empty list means the agent
+            finished and reported no openings, while ``None`` means it never
+            got as far as writing a result at all — the second is a failure,
+            the first may simply be an empty careers page.
         """
         try:
             data = json.loads(sandbox_mgr.read_file("/home/user/output.json"))
@@ -119,9 +167,9 @@ class CrawlerAgent(BaseAgent):
                 return data["jobs"]
             if isinstance(data, list):
                 return data
-            return []
+            return None
         except Exception:
-            return []
+            return None
 
     def read_crawler_code(self) -> Optional[str]:
         """Read the generated crawler script so it can be cached for reuse."""
@@ -139,10 +187,8 @@ class CrawlerAgent(BaseAgent):
         cancel_event: Optional[threading.Event] = None,
         verbose: bool = True,
         log_dir: str = "logs",
-    ) -> tuple[list[dict], Optional[str]]:
-        """Run one crawl and return the jobs plus the generated crawler code.
-
-        This is the drop-in replacement for ``app/crawl/pipeline.py::run_crawler``.
+    ) -> "CrawlOutcome":
+        """Run one crawl and report what it produced.
 
         Args:
             career_url: The careers page to crawl.
@@ -154,8 +200,8 @@ class CrawlerAgent(BaseAgent):
             log_dir: Directory for the JSONL event log.
 
         Returns:
-            A ``(jobs, crawler_code)`` tuple. ``crawler_code`` is ``None`` when
-            the agent never produced a script.
+            A ``CrawlOutcome``. Check ``failure_reason()`` rather than testing
+            ``jobs`` for emptiness — the two are not the same question.
         """
         bridge = CrawlEventBridge(handlers=[ConsoleHandler(verbose=verbose), FileHandler(log_dir=log_dir)])
         cancelled = False
@@ -171,19 +217,24 @@ class CrawlerAgent(BaseAgent):
             },
         )
 
+        turns = 0
+        agent_error: Optional[str] = None
+
         try:
-            await self.run(
+            state = await self.run(
                 [Message(role="user", content=f"爬取该招聘网站的所有岗位信息：{career_url}")],
                 session_id,
                 callbacks=[bridge],
                 cancel_check=(cancel_event.is_set if cancel_event else None),
             )
+            turns = len([m for m in (state or {}).get("messages", []) if isinstance(m, AIMessage)])
         except AgentCancelled:
             cancelled = True
             logger.info("crawl_agent_cancelled", session_id=session_id, url=career_url)
         except Exception as e:
             # A failed run can still have produced a usable output.json, so fall
             # through to the extraction below rather than losing the work.
+            agent_error = str(e)
             logger.exception("crawl_agent_failed", session_id=session_id, url=career_url, error=str(e))
         finally:
             bridge.finish(cancelled=cancelled)
@@ -196,17 +247,33 @@ class CrawlerAgent(BaseAgent):
         # output, so it is cleaned up here rather than in the finally above.
         if cancelled:
             sandbox_mgr.cleanup(success=True)
-            return [], None
+            return CrawlOutcome(jobs=[], code=None, turns=turns, cancelled=True)
 
         jobs = self.read_output()
         code = self.read_crawler_code()
 
         # No jobs means the crawl failed; cleanup() then keeps the container so
         # the generated script and partial output stay inspectable.
-        sandbox_mgr.cleanup(success=bool(jobs))
-        logger.info("crawl_sandbox_released", session_id=session_id, jobs=len(jobs), kept=not bool(jobs))
+        produced = bool(jobs)
+        sandbox_mgr.cleanup(success=produced)
+        logger.info(
+            "crawl_sandbox_released",
+            session_id=session_id,
+            jobs=len(jobs) if jobs is not None else None,
+            turns=turns,
+            kept=not produced,
+        )
 
-        return jobs, code
+        return CrawlOutcome(
+            jobs=jobs if jobs is not None else [],
+            code=code,
+            turns=turns,
+            wrote_output=jobs is not None,
+            # `_chat` stops the graph once the turn count passes max_turns, so
+            # reaching it means the agent was cut off rather than finishing.
+            max_turns=self.max_turns,
+            error=agent_error,
+        )
 
 
 crawler_agent = CrawlerAgent()

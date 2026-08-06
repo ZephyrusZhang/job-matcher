@@ -164,12 +164,22 @@ class CrawlService:
                 async with _crawl_semaphore:
                     if cancel_event.is_set():
                         return
-                    raw_jobs, new_code = await crawler_agent.crawl(
+                    outcome = await crawler_agent.crawl(
                         career_url,
                         session_id=task_id,
                         company_id=company_id,
                         cancel_event=cancel_event,
                     )
+
+                # An agent that never wrote a result is a failed crawl, not a
+                # company with no openings. Letting it through marked the task
+                # `completed` with 0 jobs — no error to act on, while the
+                # listing quietly showed nothing.
+                reason = outcome.failure_reason()
+                if reason:
+                    raise RuntimeError(reason)
+
+                raw_jobs, new_code = outcome.jobs, outcome.code
 
                 # Cache the generated code on success
                 if new_code and raw_jobs and not cancel_event.is_set():
