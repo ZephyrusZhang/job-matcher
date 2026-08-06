@@ -113,6 +113,66 @@ for k, v in detail.items():
 
 同理，若站点把要求拆成"基本要求 / 专业要求 / 学历要求"等多个字段，也全部按顺序拼进 `requirements`，各段之间空一行。宁可 `requirements` 长一些，也不要漏。
 
+# source_url：必须由证据得出，不能靠编
+
+`source_url` 是用户点开岗位的唯一入口，也是系统的去重键。**它错了，整份数据就等于全是死链**，而且没有任何报错——链接照样打得开，只是打开的不是那个岗位。
+
+## 按这个优先级取，不要跳级
+
+1. **接口字段里已经有** —— 详情/列表响应里带 `url`、`link`、`jobUrl`、`detailUrl`、`h5Url` 之类的字段，直接用（相对路径就拼上域名）。
+2. **页面上真实的 `<a href>`** —— 用 `probe.py` 把岗位卡片区域的所有 `a[href]` 打出来，看真实链接长什么样：
+
+   ```python
+   hrefs = await page.eval_on_selector_all(
+       ".post_list a[href], [class*='job'] a[href], [class*='position'] a[href]",
+       "els => els.map(e => e.href).slice(0, 5)")
+   print(hrefs)
+   ```
+3. **真的点进去，读地址栏** —— 点击岗位卡片，等 2 秒，打印 `page.url`。这是 SPA 唯一可靠的办法。
+   **点击后必须比较点击前后的 `page.url`：没变就是这一次点击根本没生效**，不代表"这个站点没有详情页"。换个元素再点（标题 div、整个卡片 `li`、卡片里的 `a`），或者用 `page.wait_for_url` 等跳转。
+4. **实在拿不到才自己拼** —— 拼完**必须**做下面的验证，不验证不许用。
+
+## 验证 source_url：HTTP 200 完全不能说明问题
+
+招聘站基本都是 SPA：**所有路由都返回同一个 HTML 骨架，状态码都是 200，内容由 JS 渲染。** 所以下面这些检查全部无效，做了等于没做：
+
+- ❌ 状态码是不是 200
+- ❌ 响应里有没有域名
+- ❌ `<title>` 是不是像那么回事
+
+真实教训：某次爬取拼出了 `https://join.qq.com/post.html?postId={id}`，Agent 用 httpx 请求了一下，拿到 `Status: 200`、`Title: 岗位投递 | 腾讯校招`，判定"source_url 有效"，于是 294 个岗位全部写了这个链接。实际上 `post.html` 是**列表页**，`postId` 参数被完全忽略，正确的是 `post_detail.html?postid={id}`。而那个 `<title>` 其实已经说了实话——"岗位**投递**"是列表页，详情页是"岗位**详情**"，只是没人细看。
+
+**必须用 Playwright 渲染之后再判断。** 用 httpx 拿原始 HTML 做任何比较都是白费力气——SPA 的骨架跟 id 无关，真 id 和假 id 拿到的字节可以完全一致。
+
+唯一有效的验证：**渲染这个 URL，检查这个岗位自己的标题出现在正文里**。同时拿一个假 id 再渲一次作为对照。
+
+```python
+async def check(page, url, title):
+    await page.goto(url, wait_until="networkidle", timeout=30000)
+    await page.wait_for_timeout(2500)
+    text = " ".join((await page.inner_text("body")).split())
+    print(f"{url}\n  len={len(text)} 命中={title[:12] in text}\n  {text[:100]}")
+
+await check(page, URL_TPL.format(id=真实id), 岗位标题)
+await check(page, URL_TPL.format(id="INVALID_9999"), 岗位标题)   # 对照组
+```
+
+判读标准：
+
+- 真 id **命中标题**，假 id **不命中** → ✅ 通过，链接确实指向这个岗位
+- 真 id 就不命中 → ❌ URL 错了，回到第 1~3 步
+- 真假两次渲染结果**一样** → ❌ id 没被用上，URL 错了
+
+这三种情况在腾讯站上的真实表现，可以直接拿来对照理解：
+
+```
+post.html?postId=<真实id>          len=859  命中=False   正文："岗位投递 招聘范围 日常实习…"（列表页）
+post_detail.html?postid=<真实id>   len=894  命中=True    正文："腾讯营销—基于大模型Agent的…"（正确）
+post_detail.html?postid=INVALID    len=156  命中=False   正文："岗位已下架"（说明 id 确实生效了）
+```
+
+注意第一行：那个错误 URL 用 httpx 请求同样是 **200**，`<title>` 同样像模像样，只有渲染之后才暴露出它是列表页。
+
 # 写爬虫
 
 用 `sandbox_write_file` 写入 `/home/user/crawler.py`。
@@ -191,6 +251,7 @@ head -c 2000 /home/user/output.json
 
 - `title`、`location`、`source_url` 非空？
 - `source_url` 每条**都不一样**？（重要：系统按 `source_url` 去重，重复或为空的会被直接丢弃，100 条可能只入库 1 条）
+- `source_url` 过了「Playwright 渲染 + 命中岗位标题 + 假 id 对照」？**没做过就现在做**，不要因为它看起来像个正常链接、或者 httpx 返回了 200 就放行
 - `description` 非空？空的说明是场景 B，还需要补详情
 - 岗位条数和接口返回的总数对得上？
 
@@ -285,7 +346,7 @@ asyncio.run(main())
 
 字段规则：
 
-- **`title` 和 `source_url` 是硬性要求。** `source_url` 是系统的去重键：为空或重复，这条岗位会被静默丢弃。必须拼成完整 URL（带 scheme 和域名），且每个岗位唯一。
+- **`title` 和 `source_url` 是硬性要求。** `source_url` 是系统的去重键：为空或重复，这条岗位会被静默丢弃。必须是带 scheme 和域名的完整 URL、每个岗位唯一，并且**按上面「source_url」一节的办法取得并验证过**——猜一个能返回 200 的地址不算数。
 - `description` = **职位描述**：业务线、团队、主要工作内容。通常对应接口里的 `description` / `duty` / `responsibility` / `jobDesc` 一类字段。
 - `requirements` = **职位要求**：对应聘者在技术、学历、经验、素质上的要求。通常对应 `requirement` / `qualification` / `jobRequire` 一类字段。**加分项也归这里**——它可能是另一个独立字段（`addition` / `bonus` / `highLight` …），追加到末尾并用 `加分项：` 起一行隔开。详见上面「加分项」一节。
 - 这两个字段**填完整原文**：保留原有的换行和序号，不要摘要、不要截断、不要自己拆成数组、不要把 HTML 标签留在里面（`<br>` 转成换行，其余标签去掉）。
