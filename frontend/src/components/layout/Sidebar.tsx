@@ -12,6 +12,9 @@ import { cn } from "@/lib/utils"
 const navItems = [
   { href: "/jobs", label: "岗位总览", icon: LayoutList },
   { href: "/match", label: "智能匹配", icon: Target },
+  // Settings is a destination like the other two, so it belongs in the nav
+  // rather than being restyled as a footer entry.
+  { href: "/settings", label: "设置", icon: Settings },
 ]
 
 export function Sidebar() {
@@ -60,29 +63,11 @@ export function Sidebar() {
 
       {/* Footer: settings and theme share one row, mirroring the reference's
           two-action footer instead of stacking another full-width nav entry. */}
-      {/* Padding and inner spacing match the nav above so the 设置 icon lands
-          on the same vertical line as 岗位总览 / 智能匹配 — it is the same kind
-          of entry, just parked at the bottom. */}
-      <div className="shrink-0 border-t border-border-default px-3 py-2">
-        <div className="flex items-center gap-2">
-          <Link
-            href="/settings"
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm transition-colors",
-              pathname === "/settings"
-                ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)] font-medium"
-                : "text-text-secondary hover:bg-[var(--nav-hover-bg)] hover:text-text-primary",
-            )}
-          >
-            <Settings className="h-4 w-4 shrink-0" />
-            <span className="truncate">设置</span>
-          </Link>
-          {/* Boxed to the nav row's height so the two sit on one baseline
-              rather than the shorter switch floating beside a taller pill. */}
-          <div className="flex h-9 shrink-0 items-center">
-            <ThemeToggle />
-          </div>
-        </div>
+      {/* The theme switch is the only thing down here now, so it gets the row
+          to itself. Sharing one with 设置 forced a flat nav entry and an
+          animated capsule to be read as peers, which neither survived. */}
+      <div className="flex shrink-0 justify-center border-t border-border-default px-3 py-3">
+        <ThemeToggle />
       </div>
     </aside>
   )
