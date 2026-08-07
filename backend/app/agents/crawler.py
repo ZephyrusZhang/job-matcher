@@ -12,6 +12,7 @@ retries, and cooperative cancellation.
 """
 
 import json
+import logging
 import threading
 from dataclasses import dataclass
 from typing import (
@@ -187,7 +188,7 @@ class CrawlerAgent(BaseAgent):
         *,
         company_id: Optional[str] = None,
         cancel_event: Optional[threading.Event] = None,
-        verbose: bool = True,
+        verbose: Optional[bool] = None,
         log_dir: str = "logs",
     ) -> "CrawlOutcome":
         """Run one crawl and report what it produced.
@@ -198,14 +199,25 @@ class CrawlerAgent(BaseAgent):
             company_id: Names/labels the sandbox container, e.g.
                 ``jm-crawl-bytedance-0faec70f``.
             cancel_event: Checked between graph nodes for cooperative cancellation.
-            verbose: Whether the console handler prints message previews.
+            verbose: Log the model's narration and each tool result as well as
+                the per-turn line. Defaults to following ``LOG_LEVEL`` — it used
+                to be hardcoded on, which is how a crawl came to print ~580
+                lines the structured log had no say over.
             log_dir: Directory for the JSONL event log.
 
         Returns:
             A ``CrawlOutcome``. Check ``failure_reason()`` rather than testing
             ``jobs`` for emptiness — the two are not the same question.
         """
-        bridge = CrawlEventBridge(handlers=[ConsoleHandler(verbose=verbose), FileHandler(log_dir=log_dir)])
+        if verbose is None:
+            verbose = logging.getLogger(__name__).isEnabledFor(logging.DEBUG)
+
+        bridge = CrawlEventBridge(
+            handlers=[
+                ConsoleHandler(verbose=verbose, task_id=session_id, company=company_id),
+                FileHandler(log_dir=log_dir),
+            ]
+        )
         cancelled = False
 
         # Stamp identity before the first tool call — the shared sandbox

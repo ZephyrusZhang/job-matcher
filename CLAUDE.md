@@ -69,6 +69,12 @@ Two sinks from the same event dict via `ProcessorFormatter`: a rendered console 
 
 Log at phase boundaries, not per step — a crawl emits `crawl_started` / `crawl_finished` (with counts and `duration_ms`) / `crawl_failed`, plus `jobs_classified` and `jobs_skipped` so "found 294, stored 12" is answerable from the log alone. Per-item chatter belongs at DEBUG.
 
+The crawl agent's event stream (`crawl/callbacks.py::CrawlEventBridge`) fans out to three consumers with overlapping content, so each is kept for what only it can do:
+
+- **`ConsoleHandler`** — one `crawl_turn` line per turn (tool, elided args, `ok`, `tool_ms`, `llm_ms`, `prompt_tokens`), answering "is this crawl still moving". It previously `print()`ed the LLM preview, tool args and tool results — ~580 lines for a 64-turn crawl, bypassing the logging system entirely. Now ~65 lines through `get_logger`, so it carries a timestamp, obeys `LOG_LEVEL`, and reaches the JSONL. `crawler_agent.crawl(verbose=...)` defaults to following `LOG_LEVEL`; `LOG_LEVEL=DEBUG` restores narration and tool results.
+- **`FileHandler`** — `logs/agent_<ts>.jsonl`, every event untruncated. This is the one to reach for when debugging a crawl: it is local, greppable and scriptable, whereas Langfuse needs a browser and `LANGFUSE_TRACING_ENABLED` is off by default. Pruned to the newest `MAX_TRACE_FILES` (30) on each new crawl.
+- **Langfuse** — attached by `BaseAgent._build_config`; the richest view of prompts and tokens, but hosted and optional.
+
 ### Schema notes
 
 Tables are created by `_CREATE_TABLES_SQL` in `app/database.py` — there is no migration framework, so schema changes mean editing that DDL plus a hand-written script in `backend/scripts/`. Several columns hold JSON-encoded text: `jobs.location` is a JSON array (filtering uses `LIKE '%"城市"%'`), `reports.job_ids`/`preferences` are JSON. `reports` has `UNIQUE(company_id, report_type)`, so a regenerated report replaces the old one.
