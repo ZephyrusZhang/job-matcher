@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/common/EmptyState"
 import type { Job } from "@/types/job"
 import type { Company } from "@/types/company"
 import type { PaginationMeta } from "@/types/api"
+import { isComposing } from "@/lib/ime"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
 
@@ -253,7 +254,12 @@ function JobsPageContent() {
             <Input
               value={searchInput}
               onChange={handleSearchInput}
-              onKeyDown={(e) => { if (e.key === "Enter") doSearch(searchInput); if (e.key === "Escape") setShowSuggestions(false) }}
+              onKeyDown={(e) => {
+                // Enter also commits an IME candidate — searching on that press
+                // fires against half-typed pinyin.
+                if (e.key === "Enter" && !isComposing(e)) doSearch(searchInput)
+                if (e.key === "Escape") setShowSuggestions(false)
+              }}
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               placeholder="搜索岗位..."
               className="pl-9 pr-9 bg-neutral-900 border border-neutral-800 text-white placeholder:text-neutral-500 rounded-lg h-10 focus:border-neutral-600"

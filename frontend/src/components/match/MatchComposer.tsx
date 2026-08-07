@@ -16,6 +16,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { getCompanies } from "@/lib/api/companies"
 import { apiGet } from "@/lib/api/client"
+import { isComposing } from "@/lib/ime"
 import { cn } from "@/lib/utils"
 import type { MatchScope, ResumeSummary, ScopeMode } from "@/types/match"
 import type { Company } from "@/types/company"
@@ -175,7 +176,10 @@ export function MatchComposer({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            // An IME's Enter commits its candidate; only a free-standing Enter
+            // sends. Escape still has to work mid-composition so the expanded
+            // view can always be closed.
+            if (e.key === "Enter" && !e.shiftKey && !isComposing(e)) {
               e.preventDefault()
               submit()
             }

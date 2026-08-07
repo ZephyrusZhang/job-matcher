@@ -7,6 +7,7 @@ import { useConversationStore } from "@/store/useConversationStore"
 import { SESSION_PARAM, conversationHref } from "@/lib/matchRoutes"
 import { cn } from "@/lib/utils"
 import type { Conversation } from "@/types/match"
+import { isComposing } from "@/lib/ime"
 
 /** How often the sidebar re-checks which conversations have a live turn. */
 const LIVE_POLL_MS = 5000
@@ -130,7 +131,7 @@ export function ConversationList() {
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") commitRename(conversation.id)
+                        if (e.key === "Enter" && !isComposing(e)) commitRename(conversation.id)
                         if (e.key === "Escape") setEditingId(null)
                       }}
                       className="min-w-0 flex-1 rounded border border-border-default bg-bg-primary px-1.5 py-1 text-sm text-text-primary outline-none"

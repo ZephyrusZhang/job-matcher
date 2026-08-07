@@ -186,6 +186,7 @@ Two flags that must be set together: `READ_ONLY_MODE` (backend, `middleware/read
 - **Four pages**, all client components: `/jobs`, `/match`, `/compare`, `/settings`.
 - **State split**: Zustand stores (`store/`) hold cross-page state — selected company, favorites, resume, settings — while `hooks/` hold per-page fetch state. `useFavoriteStore.toggle` updates optimistically and rolls back on failure.
 - **All network calls go through `lib/api/*.ts`**, which wrap `apiGet/apiPost/apiPatch/apiDelete` from `lib/api/client.ts`. Components should not call `fetch` directly (SSE via `lib/sse.ts` is the exception).
+- **Enter-to-submit must be guarded with `isComposing(e)` from `lib/ime.ts`.** With a CJK IME, Enter first commits the candidate the IME is offering and the browser fires a `keydown` for that press too — so a bare `e.key === "Enter"` sends half-typed pinyin. Typing English *through* a Chinese IME hits it on every message. The guard reads both `nativeEvent.isComposing` (Chrome/Edge/Firefox) and the legacy `keyCode === 229` (Safari, which fires `compositionend` *before* the keydown and so reports `isComposing === false`).
 - `components/ui/` is shadcn/Base UI primitives; `components/{jobs,report,layout,settings,common}/` is app code. Tailwind v4 (CSS-first config in `app/globals.css`), category/job-type colors centralized in `lib/constants.ts`.
 
 ## Design constraints

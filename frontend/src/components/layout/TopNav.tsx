@@ -4,6 +4,7 @@ import { Search } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState, useCallback, useRef, useEffect } from "react"
 import { Input } from "@/components/ui/input"
+import { isComposing } from "@/lib/ime"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
 
@@ -50,7 +51,7 @@ export function TopNav() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleSearch(query)
+    if (e.key === "Enter" && !isComposing(e)) handleSearch(query)
     if (e.key === "Escape") setShowSuggestions(false)
   }
 
