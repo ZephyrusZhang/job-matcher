@@ -106,7 +106,11 @@ class MatchAgent(BaseAgent):
     name = "matcher"
     tools = MATCH_TOOLS
     terminal_tools = frozenset({FINAL_ANSWER_TOOL})
-    max_turns = 12
+    # Per *question*, not per conversation (see `BaseAgent._current_turn`). Set
+    # high enough that it is a runaway-loop backstop rather than something a
+    # thorough answer can bump into — the graph still ends as soon as the model
+    # calls `final_answer`, so a normal turn costs 1–6 calls regardless.
+    max_turns = 256
     # History budget only — *not* the reply length cap, which is
     # `settings.MAX_TOKENS` over in `services/llm/registry.py`.
     #
