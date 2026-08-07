@@ -42,6 +42,7 @@ from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
     BaseMessage,
+    HumanMessage,
     ToolMessage,
     convert_to_openai_messages,
 )
@@ -219,6 +220,30 @@ class BaseAgent:
 
     # ── Graph construction ────────────────────────────────────────────────
 
+    def _current_turn(self, messages: list[BaseMessage]) -> int:
+        """Which LLM call of the *current question* is about to be made.
+
+        Counted from the last human message rather than over the whole thread.
+        ``state.messages`` is the entire checkpointed conversation, so counting
+        all of it made ``max_turns`` a budget for the conversation instead of
+        for the question: a ``/match`` chat that spent 12 assistant turns across
+        five questions then refused every further question in ~40 ms, ending the
+        run before a single LLM call and leaving the turn with no answer at all.
+        A resumed or repaired thread lands on the same number, since it depends
+        only on what follows the latest question.
+
+        Args:
+            messages: The full conversation state.
+
+        Returns:
+            1 for the first call answering the newest question, 2 for the next…
+        """
+        for i in range(len(messages) - 1, -1, -1):
+            if isinstance(messages[i], HumanMessage):
+                messages = messages[i:]
+                break
+        return len([m for m in messages if isinstance(m, AIMessage)]) + 1
+
     async def _chat(self, state: Any, config: RunnableConfig) -> Command:
         """Call the LLM and route to tools or to the end of the graph."""
         metadata = config.get("metadata") or {}
@@ -229,9 +254,15 @@ class BaseAgent:
         if callable(cancel_check) and cancel_check():
             raise AgentCancelled(f"{self.name} run cancelled")
 
-        turn = len([m for m in state.messages if isinstance(m, AIMessage)]) + 1
+        turn = self._current_turn(state.messages)
         if turn > self.max_turns:
-            logger.warning("agent_max_turns_reached", agent=self.name, session_id=thread_id, max_turns=self.max_turns)
+            logger.warning(
+                "agent_max_turns_reached",
+                agent=self.name,
+                session_id=thread_id,
+                max_turns=self.max_turns,
+                turn=turn,
+            )
             return Command(update={}, goto=END)
 
         system_prompt = self.build_system_prompt(

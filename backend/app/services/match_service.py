@@ -263,6 +263,21 @@ class MatchService:
             ):
                 run.final_answer = run.steps.pop()["content"]
 
+            # A turn that produced nothing at all still has to say so. Ending
+            # `completed` with an empty answer renders as a blank bubble, which
+            # is indistinguishable from the backend having ignored the question.
+            if status == "completed" and not run.final_answer.strip():
+                logger.warning(
+                    "match_turn_produced_no_answer",
+                    session_id=run.session_id,
+                    message_id=run.message_id,
+                    steps=len(run.steps),
+                )
+                run.final_answer = (
+                    "这一轮没能给出结论——检索步骤用完了预算。"
+                    "可以把问题问得更具体一些（比如指定方向或城市）再试一次。"
+                )
+
             job_ids = await self._resolve_citations(run.db, run.final_answer)
             await run.finish(status, job_ids)
         except Exception as e:
