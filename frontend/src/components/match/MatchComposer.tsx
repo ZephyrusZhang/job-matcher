@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import {
   AtSign,
+  Check,
   FileText,
   Loader2,
   Maximize2,
@@ -225,13 +226,21 @@ export function MatchComposer({
               <button
                 type="button"
                 onClick={() => setMode("favorites")}
+                aria-current={scope.mode === "favorites"}
                 className={cn(
-                  "mb-1 flex w-full items-center justify-between rounded px-2 py-1.5 text-sm transition-colors hover:bg-bg-tertiary",
-                  scope.mode === "favorites" ? "text-accent" : "text-text-primary",
+                  "mb-1 flex w-full items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
+                  scope.mode === "favorites"
+                    ? "bg-accent-muted font-medium text-text-primary"
+                    : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary",
                 )}
               >
-                收藏岗位
-                {scope.mode === "favorites" && <span className="text-xs">已选</span>}
+                <span className="flex items-center gap-2">
+                  <Check
+                    className={cn("h-3.5 w-3.5 shrink-0", scope.mode !== "favorites" && "opacity-0")}
+                    aria-hidden
+                  />
+                  收藏岗位
+                </span>
               </button>
 
               <div className="mb-1 border-t border-border-subtle pt-1 text-[11px] text-text-muted">
@@ -253,7 +262,7 @@ export function MatchComposer({
                           className={cn(
                             "flex h-3.5 w-3.5 items-center justify-center rounded-sm border",
                             checked
-                              ? "border-accent bg-accent text-white"
+                              ? "border-accent-main bg-accent-main text-bg-primary"
                               : "border-border-default",
                           )}
                         >
@@ -285,22 +294,39 @@ export function MatchComposer({
               {resumes.length === 0 && (
                 <p className="px-2 py-1.5 text-xs text-text-muted">还没有简历</p>
               )}
-              {resumes.map((resume) => (
-                <button
-                  key={resume.id}
-                  type="button"
-                  onClick={() => onResumeChange(resume.id)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-bg-tertiary",
-                    resume.id === resumeId ? "text-accent" : "text-text-primary",
-                  )}
-                >
-                  <span className="truncate">{resume.label}</span>
-                  {resume.is_default && (
-                    <span className="ml-2 shrink-0 text-[10px] text-text-muted">默认</span>
-                  )}
-                </button>
-              ))}
+              {/* Selection is a tick plus a background tint, not a text colour:
+                  the accent resolves to the same near-white/near-black as
+                  text-primary, so recolouring the label could not signal
+                  anything on its own. The tick keeps its space when unselected
+                  so the labels stay aligned. */}
+              {resumes.map((resume) => {
+                const selected = resume.id === resumeId
+                return (
+                  <button
+                    key={resume.id}
+                    type="button"
+                    onClick={() => onResumeChange(resume.id)}
+                    aria-current={selected}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm transition-colors",
+                      selected
+                        ? "bg-accent-muted font-medium text-text-primary"
+                        : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Check
+                        className={cn("h-3.5 w-3.5 shrink-0", !selected && "opacity-0")}
+                        aria-hidden
+                      />
+                      <span className="truncate">{resume.label}</span>
+                    </span>
+                    {resume.is_default && (
+                      <span className="ml-2 shrink-0 text-[10px] text-text-muted">默认</span>
+                    )}
+                  </button>
+                )
+              })}
 
               <button
                 type="button"
@@ -354,7 +380,7 @@ export function MatchComposer({
                 type="button"
                 onClick={submit}
                 disabled={!value.trim()}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white transition-opacity disabled:opacity-30"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-main text-bg-primary transition-opacity disabled:opacity-30"
                 aria-label="发送"
               >
                 <Send className="h-3.5 w-3.5" />

@@ -90,7 +90,7 @@ export function MarkdownRenderer({ content, isStreaming }: MarkdownRendererProps
               href={href}
               target="_blank"
               rel="noreferrer"
-              className="text-accent underline decoration-accent/30 underline-offset-2 transition-colors hover:decoration-accent"
+              className="text-accent-main underline decoration-accent-main/30 underline-offset-2 transition-colors hover:decoration-accent-main"
             >
               {children}
             </a>

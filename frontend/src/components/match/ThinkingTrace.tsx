@@ -26,7 +26,7 @@ function StatusDot({ step }: { step: TraceStep }) {
   return (
     <span className="absolute -left-[21px] top-1 flex h-4 w-4 items-center justify-center rounded-full bg-bg-primary">
       {step.pending ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-text-secondary" />
       ) : step.ok === false ? (
         <X className="h-3.5 w-3.5 text-red-500" />
       ) : (
@@ -120,7 +120,7 @@ export function ThinkingTrace({ steps, isStreaming = false }: ThinkingTraceProps
         {collapsed && toolCount > 0 && (
           <span className="text-text-muted">· {toolCount} 步</span>
         )}
-        {isStreaming && <Loader2 className="ml-1 h-3 w-3 animate-spin text-accent" />}
+        {isStreaming && <Loader2 className="ml-1 h-3 w-3 animate-spin text-text-secondary" />}
       </button>
 
       {!collapsed && (
