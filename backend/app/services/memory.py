@@ -17,7 +17,9 @@ from app.core.cache import (
     cache_service,
 )
 from app.core.config import settings
-from app.core.logging import logger
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class MemoryService:

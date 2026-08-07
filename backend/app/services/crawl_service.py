@@ -1,13 +1,14 @@
 import asyncio
-import logging
 import math
 import threading
+import time
 import uuid
 
 import aiosqlite
 
 from app.agents.crawler import crawler_agent
 from app.config import AppConfig
+from app.core.logging import get_logger
 from app.crawl.pipeline import run_cached_crawler, store_jobs
 from app.database import get_db
 from app.exceptions import (
@@ -22,7 +23,7 @@ from app.schemas.common import PaginationMeta
 from app.schemas.crawl import CrawlMode, CrawlTaskOut
 from app.services.company_service import CompanyService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # The crawl agent runs on the main event loop rather than in a worker thread:
 # the LangGraph Postgres checkpointer pool is bound to the loop that opened it,
@@ -75,11 +76,6 @@ class CrawlService:
             if not script_row:
                 raise CrawlerScriptNotFoundError()
             cached_code = script_row["code"]
-
-        logger.info(
-            f"Trigger crawl: company={company_id}, mode={mode}, "
-            f"cached_code={str(len(cached_code)) + ' chars' if cached_code else 'not used'}"
-        )
 
         task_id = str(uuid.uuid4())
         await task_model.create_task(db, task_id, company_id)
@@ -134,11 +130,17 @@ class CrawlService:
         cached_code: str | None,
     ) -> None:
         db = await get_db(db_path)
+        started = time.monotonic()
+        # One event per crawl phase, not one per step: a crawl is a long,
+        # infrequent operation, so what matters afterwards is what it was asked
+        # to do, what it produced, and how long it took.
+        log = logger.bind(task=task_id, company=company_id, mode="cached" if cached_code else "agent")
         try:
             if cancel_event.is_set():
                 return
 
             await task_model.update_task_status(db, task_id, "running")
+            log.info("crawl_started", url=career_url)
 
             loop = asyncio.get_running_loop()
             raw_jobs: list[dict] = []
@@ -147,12 +149,10 @@ class CrawlService:
             cache_hit = False
 
             if cached_code:
-                logger.info(f"[crawl] Using cached code for company={company_id} ({len(cached_code)} chars)")
                 raw_jobs = await loop.run_in_executor(
                     None, run_cached_crawler, cached_code, cancel_event, company_id, task_id
                 )
                 cache_hit = True
-                logger.info(f"[crawl] Cached crawler succeeded: {len(raw_jobs)} jobs")
 
             if not cache_hit and not cancel_event.is_set():
                 # `cached` never reaches here: a failure there raises and the
@@ -160,7 +160,6 @@ class CrawlService:
                 # the user's back is the opposite of what they asked for.
                 # task_id doubles as the LangGraph thread_id, so a crawl's
                 # conversation is checkpointed and inspectable per task.
-                logger.info(f"Running agent crawler for company={company_id}")
                 async with _crawl_semaphore:
                     if cancel_event.is_set():
                         return
@@ -184,10 +183,10 @@ class CrawlService:
                 # Cache the generated code on success
                 if new_code and raw_jobs and not cancel_event.is_set():
                     await script_model.upsert_script(db, company_id, new_code)
-                    logger.info(f"Cached crawler script for company={company_id}")
+                    log.info("crawler_script_cached", chars=len(new_code), turns=outcome.turns)
 
             if cancel_event.is_set():
-                logger.info(f"Crawl cancelled after crawl phase: task={task_id}")
+                log.info("crawl_cancelled", phase="crawl")
                 return
 
             jobs_found, jobs_new, jobs_updated = await store_jobs(
@@ -202,16 +201,25 @@ class CrawlService:
                 jobs_updated=jobs_updated,
                 error_message="用户手动取消" if cancel_event.is_set() else None,
             )
-            logger.info(
-                f"Crawl {status}: company={company_id}, "
-                f"found={jobs_found}, new={jobs_new}, updated={jobs_updated}"
+            log.info(
+                "crawl_finished",
+                status=status,
+                found=jobs_found,
+                new=jobs_new,
+                updated=jobs_updated,
+                duration_ms=round((time.monotonic() - started) * 1000),
             )
 
         except Exception as e:
             if cancel_event.is_set():
-                logger.info(f"Crawl cancelled with error: task={task_id}")
+                log.info("crawl_cancelled", phase="store", error=str(e)[:200])
                 return
-            logger.exception(f"Crawl failed: company={company_id}")
+            # exception() attaches the traceback; the JSONL keeps it structured.
+            log.exception(
+                "crawl_failed",
+                error=str(e)[:500],
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
             await task_model.update_task_status(
                 db, task_id, "failed",
                 error_message=str(e)[:500],

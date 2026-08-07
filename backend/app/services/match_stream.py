@@ -29,8 +29,10 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult
 
 from app.agents.match_tools import FINAL_ANSWER_TOOL
-from app.core.logging import logger
+from app.core.logging import get_logger
 from app.services.match_runs import Run
+
+logger = get_logger(__name__)
 
 _ESCAPES = {
     "n": "\n",

@@ -1,7 +1,8 @@
 """Job type normalization: map various raw values to 实习 / 全职."""
-import logging
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 # ── 2 个标准 job_type ──
 STANDARD_JOB_TYPES = ["实习", "全职"]

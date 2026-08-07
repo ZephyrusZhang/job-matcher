@@ -1,11 +1,12 @@
 """Category normalization: keyword mapping + LLM fallback with cache."""
 import json
-import logging
 import os
 import threading
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 # ── 15 个标准类别 ──
 STANDARD_CATEGORIES = [
@@ -308,8 +309,11 @@ def _llm_classify(raw_category: str, title: str = "", description: str = "") -> 
         except Exception as e:
             last_error = e
             logger.warning(
-                f"LLM classify attempt {attempt}/{_CLASSIFY_MAX_RETRIES} "
-                f"failed for '{raw_category}': {e}"
+                "category_llm_retry",
+                attempt=attempt,
+                max_attempts=_CLASSIFY_MAX_RETRIES,
+                category=raw_category,
+                error=str(e),
             )
 
     raise RuntimeError(
@@ -408,8 +412,11 @@ def _llm_classify_batch(items: list[dict]) -> list[str | None]:
         except Exception as e:
             last_error = e
             logger.warning(
-                f"LLM batch classify attempt {attempt}/{_CLASSIFY_MAX_RETRIES} "
-                f"failed ({len(items)} items): {e}"
+                "category_llm_batch_retry",
+                attempt=attempt,
+                max_attempts=_CLASSIFY_MAX_RETRIES,
+                items=len(items),
+                error=str(e),
             )
 
     raise RuntimeError(
@@ -495,9 +502,6 @@ def prebatch_classify(
     if total == 0:
         return generic_cache
 
-    logger.info(
-        f"prebatch_classify: {total} unique items need LLM (batch_size={batch_size})"
-    )
 
     done = 0
     for i in range(0, total, batch_size):
@@ -546,10 +550,7 @@ def normalize_category(
     # Skip keyword/cache lookup entirely and go straight to LLM with full context.
     if is_generic:
         if not title and not description:
-            logger.warning(
-                f"Generic category '{raw_category}' has no title/description context, "
-                "cannot classify reliably."
-            )
+            logger.debug("category_unclassifiable", category=raw_category, reason="no_context")
             return None
         # Check pre-batched generic cache first (populated by prebatch_classify)
         if generic_cache is not None:
@@ -557,9 +558,7 @@ def normalize_category(
             if key in generic_cache:
                 return generic_cache[key]
         # Fallback: single-call LLM (slow path)
-        logger.info(
-            f"Generic category '{raw_category}' — calling LLM with title='{title[:40]}'"
-        )
+        logger.debug("category_llm_slow_path", category=raw_category, title=title[:40], reason="generic")
         return _llm_classify(raw_category, title=title, description=description)
 
     # Step 1: Direct match in standard categories
@@ -577,7 +576,7 @@ def normalize_category(
             return _llm_cache[raw_lower]
 
     # Step 4: LLM fallback (slow path — prebatch_classify should have handled this)
-    logger.info(f"Category '{raw_category}' not in mapping, calling LLM with context...")
+    logger.debug("category_llm_slow_path", category=raw_category, reason="unmapped")
     result = _llm_classify(raw_category, title=title, description=description)
 
     # Cache the result (keyed by raw category value, including codes)
@@ -585,9 +584,6 @@ def normalize_category(
         _llm_cache[raw_lower] = result
         _save_cache()
 
-    if result:
-        logger.info(f"LLM mapped '{raw_category}' → '{result}'")
-    else:
-        logger.info(f"LLM classified '{raw_category}' as non-tech")
+    logger.debug("category_llm_resolved", category=raw_category, mapped_to=result)
 
     return result

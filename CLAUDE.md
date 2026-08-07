@@ -57,6 +57,18 @@ Services are module-level singletons created once in `dependencies.py::init_serv
 
 `config/settings.yml` is loaded and `${ENV_VAR}` placeholders are recursively substituted from `backend/.env` (`app/config.py`). Relative `database.path` / `uploads.dir` are re-anchored to `backend/` in the lifespan. `config/companies.yml` is *seed data only* — it is inserted once when the `companies` table is empty; after that the DB is authoritative.
 
+### Logging
+
+One setup for the whole backend, in `app/core/logging.py`. Every module does `logger = get_logger(__name__)` — never `logging.getLogger`, and never the shared `logger` export. Sharing one instance is not cosmetic: `structlog` resolves an unnamed logger from the calling frame and `cache_logger_on_first_use` freezes it, so a shared logger attributes *every* event to whichever module logged first.
+
+Events are `snake_case` names with the variables as keyword arguments — `logger.info("crawl_finished", company=..., found=..., duration_ms=...)`, never an f-string. That is what makes `grep crawl_failed` or `jq 'select(.event=="crawl_failed")'` find every occurrence. `logger.bind(...)` at the top of a long operation stamps its ids onto every subsequent event.
+
+Two sinks from the same event dict via `ProcessorFormatter`: a rendered console line (environment and callsite hidden unless `LOG_LEVEL=DEBUG`) and a daily JSONL file that keeps every field as a real JSON key. The file used to receive the ANSI-rendered console string as `message`, which made the `.jsonl` extension a lie.
+
+`_THIRD_PARTY_LEVELS` caps noisy libraries, enforced by `ThirdPartyLevelFilter` on the handlers rather than by logger levels alone — several libraries (langfuse especially) raise their own level back up after this module runs. Prefixes are matched longest-first so `psycopg.pool` beats `psycopg`. Without this the backend wrote **3.3 GB** of logs: `aiosqlite` DEBUG-logs every statement plus the callable's repr, so the 10 KB `_CREATE_TABLES_SQL` was re-logged per connection, and `psycopg.pool` warns once per reconnect attempt while the agent Postgres is down. Note `logs/` is gitignored.
+
+Log at phase boundaries, not per step — a crawl emits `crawl_started` / `crawl_finished` (with counts and `duration_ms`) / `crawl_failed`, plus `jobs_classified` and `jobs_skipped` so "found 294, stored 12" is answerable from the log alone. Per-item chatter belongs at DEBUG.
+
 ### Schema notes
 
 Tables are created by `_CREATE_TABLES_SQL` in `app/database.py` — there is no migration framework, so schema changes mean editing that DDL plus a hand-written script in `backend/scripts/`. Several columns hold JSON-encoded text: `jobs.location` is a JSON array (filtering uses `LIKE '%"城市"%'`), `reports.job_ids`/`preferences` are JSON. `reports` has `UNIQUE(company_id, report_type)`, so a regenerated report replaces the old one.

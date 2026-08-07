@@ -6,8 +6,8 @@ normalization, deduplication and the cached-script fast path.
 import asyncio
 import hashlib
 import json
-import logging
 import threading
+import time
 import uuid
 
 import aiosqlite
@@ -16,7 +16,9 @@ from app.crawl.category import normalize_category, prebatch_classify
 from app.crawl.job_type import normalize_job_type
 from app.crawl.location import normalize_location
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def compute_content_hash(title: str, description: str, requirements: str) -> str:
@@ -93,23 +95,35 @@ async def store_jobs(
     jobs_new = 0
     jobs_updated = 0
 
-    # Pre-batch LLM classification (32 jobs per request)
-    logger.info(f"store_jobs: prebatch classifying {jobs_found} jobs...")
+    # Pre-batch LLM classification (32 jobs per request). Logged once with the
+    # result rather than announced before and after — the interesting numbers
+    # are how many needed the LLM and how long it took, not that it started.
+    classify_started = time.monotonic()
     generic_cache = await asyncio.get_event_loop().run_in_executor(
         None, prebatch_classify, raw_jobs, 32
     )
-    logger.info(f"store_jobs: prebatch done, generic_cache={len(generic_cache)} entries")
+    logger.info(
+        "jobs_classified",
+        company=company_id,
+        jobs=jobs_found,
+        llm_resolved=len(generic_cache),
+        duration_ms=round((time.monotonic() - classify_started) * 1000),
+    )
+
+    skipped_non_tech = 0
+    skipped_duplicate = 0
 
     for raw_job in raw_jobs:
         # Check cancellation before processing next job
         if cancel_event and cancel_event.is_set():
-            logger.info(f"store_jobs cancelled after {jobs_new} new inserts")
+            logger.info("store_jobs_cancelled", company=company_id, inserted=jobs_new)
             break
 
         job = normalize_job(raw_job, company_id, generic_cache=generic_cache)
 
         # category is None only when LLM explicitly classified as non-tech
         if not job["category"]:
+            skipped_non_tech += 1
             continue
 
         # Dedup by source_url: same company + same page = same job
@@ -118,6 +132,7 @@ async def store_jobs(
             (job["source_url"], company_id),
         ) as cursor:
             if await cursor.fetchone():
+                skipped_duplicate += 1
                 continue
 
         # Insert completes fully before next iteration checks cancel
@@ -138,6 +153,16 @@ async def store_jobs(
         jobs_new += 1
 
     await db.commit()
+    # Why a crawl that "found 294" only stored 12 is the single most common
+    # question about this pipeline, so the two reasons rows get dropped are
+    # counted and reported rather than left to be inferred.
+    if skipped_non_tech or skipped_duplicate:
+        logger.info(
+            "jobs_skipped",
+            company=company_id,
+            non_tech=skipped_non_tech,
+            duplicate=skipped_duplicate,
+        )
     return jobs_found, jobs_new, jobs_updated
 
 

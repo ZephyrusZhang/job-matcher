@@ -21,7 +21,6 @@ via environment variables.
 
 from __future__ import annotations
 
-import logging
 import os
 
 from fastapi import Request
@@ -29,7 +28,9 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 _TRUTHY = {"1", "true", "yes", "on"}
 

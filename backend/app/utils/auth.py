@@ -18,9 +18,11 @@ from jose import (
 )
 
 from app.core.config import settings
-from app.core.logging import logger
+from app.core.logging import get_logger
 from app.schemas.agent import Token
 from app.utils.sanitization import sanitize_string
+
+logger = get_logger(__name__)
 
 _JWT_FORMAT = re.compile(r"^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$")
 

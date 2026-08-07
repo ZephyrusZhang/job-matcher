@@ -14,10 +14,12 @@ from typing import Any
 from app.agents.match_tools import FINAL_ANSWER_TOOL, MATCH_TOOLS, current_turn
 from app.core.config import settings
 from app.core.langgraph import BaseAgent
-from app.core.logging import logger
+from app.core.logging import get_logger
 from app.schemas.agent import Message
 from app.schemas.match import MatchScope
 from app.utils.graph import count_tokens
+
+logger = get_logger(__name__)
 
 # The provider's context window, shared between the prompt and the reply.
 CONTEXT_WINDOW_TOKENS = 1_000_000

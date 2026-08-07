@@ -1,5 +1,4 @@
 import io
-import logging
 import os
 import re
 import tarfile
@@ -7,8 +6,10 @@ import threading
 
 import docker
 
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
 
 SANDBOX_IMAGE = os.getenv("SANDBOX_IMAGE", "crawler-sandbox")
 SANDBOX_WORKDIR = "/home/user"
@@ -131,7 +132,7 @@ class SandboxManager:
             cpu_quota=100000,
             labels={SANDBOX_LABEL: "1", **self.labels},
         )
-        logger.info(f"[sandbox] started container {self.container.name} ({self.container.short_id})")
+        logger.info("sandbox_started", container=self.container.name, id=self.container.short_id)
 
     def _remove_name_conflict(self, name: str) -> None:
         """Drop a leftover container squatting on the name we want.
@@ -145,9 +146,9 @@ class SandboxManager:
             return
         try:
             existing.remove(force=True)
-            logger.info(f"[sandbox] removed stale container reusing name {name}")
+            logger.debug("sandbox_stale_removed", container=name)
         except Exception as e:
-            logger.warning(f"[sandbox] could not remove stale container {name}: {e}")
+            logger.warning("sandbox_stale_remove_failed", container=name, error=str(e))
 
     def write_file(self, path: str, content: str) -> dict:
         self.ensure_sandbox()
@@ -215,14 +216,14 @@ class SandboxManager:
                 # Containers are created with remove=True, so stopping is
                 # normally enough; force-remove covers a stop that times out.
                 self.container.stop(timeout=5)
-                logger.info(f"[sandbox] removed container {label}")
+                logger.debug("sandbox_removed", container=label)
             except Exception as e:
-                logger.warning(f"[sandbox] stop failed for {label}: {e}")
+                logger.warning("sandbox_stop_failed", container=label, error=str(e))
                 try:
                     self.container.remove(force=True)
-                    logger.info(f"[sandbox] force-removed container {label}")
+                    logger.debug("sandbox_force_removed", container=label)
                 except Exception as e2:
-                    logger.warning(f"[sandbox] force-remove failed for {label}: {e2}")
+                    logger.warning("sandbox_force_remove_failed", container=label, error=str(e2))
             self.container = None
         self.client = None
 
@@ -239,8 +240,9 @@ class SandboxManager:
 
         if not success and KEEP_SANDBOX_ON_FAILURE:
             logger.info(
-                f"[sandbox] keeping container {self.container.name} for debugging "
-                f"(crawl failed; set KEEP_SANDBOX_ON_FAILURE=false to reclaim)"
+                "sandbox_kept_for_debugging",
+                container=self.container.name,
+                hint="set KEEP_SANDBOX_ON_FAILURE=false to reclaim",
             )
             self.container = None
             self.client = None
@@ -268,7 +270,7 @@ class SandboxManager:
         try:
             client = docker.from_env()
         except Exception as e:
-            logger.warning(f"[sandbox] reap skipped, docker unavailable: {e}")
+            logger.warning("sandbox_reap_skipped", reason="docker_unavailable", error=str(e)[:200])
             return 0
 
         removed = 0
@@ -293,10 +295,10 @@ class SandboxManager:
                     container.remove(force=True)
                     removed += 1
                 except Exception as e:
-                    logger.warning(f"[sandbox] reap failed for {container.short_id}: {e}")
+                    logger.warning("sandbox_reap_failed", container=container.short_id, error=str(e))
         except Exception as e:
-            logger.warning(f"[sandbox] reap failed: {e}")
+            logger.warning("sandbox_reap_failed", error=str(e))
 
         if removed:
-            logger.info(f"[sandbox] reaped {removed} stale container(s)")
+            logger.info("sandbox_reaped", removed=removed)
         return removed

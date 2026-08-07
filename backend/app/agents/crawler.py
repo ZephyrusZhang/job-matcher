@@ -25,7 +25,7 @@ from app.core.langgraph import (
     AgentCancelled,
     BaseAgent,
 )
-from app.core.logging import logger
+from app.core.logging import get_logger
 from app.crawl.callbacks import CrawlEventBridge
 from app.crawl.handlers import (
     ConsoleHandler,
@@ -44,6 +44,8 @@ from app.crawl.tools import (
     sandbox_mgr,
 )
 from app.schemas.agent import Message
+
+logger = get_logger(__name__)
 
 # Matches MAX_TURNS from the original loop.
 MAX_TURNS = 64

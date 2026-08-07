@@ -19,7 +19,9 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from app.core.config import settings
-from app.core.logging import logger
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 _API_KEY = SecretStr(settings.LLM_API_KEY or "dummy")
 

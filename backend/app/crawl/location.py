@@ -13,10 +13,11 @@ Input examples (all observed in real crawler output):
 Output: deduplicated list of city names preserving first-seen order, e.g.
     ["深圳", "北京", "上海", "广州"]
 """
-import logging
 import re
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Separators used in raw crawler output to delimit multiple cities.
 # Note: full-width and half-width variants are both included.

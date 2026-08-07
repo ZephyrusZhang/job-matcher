@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,7 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from app.config import load_config
 # Importing app.core.logging configures structlog and the root logger, so it
 # must come before any module that logs at import time.
-from app.core.logging import logger as struct_logger
+from app.core.logging import get_logger
 from app.core.cache import cache_service
 from app.core.config import settings as agent_settings
 from app.core.langgraph import close_connection_pool, get_checkpointer
@@ -34,7 +33,7 @@ from app.routers import (
     settings,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -59,7 +58,7 @@ async def lifespan(app: FastAPI):
 
         SandboxManager.reap_stale()
     except Exception as e:
-        struct_logger.warning("sandbox_reap_failed", error=str(e))
+        logger.warning("sandbox_reap_failed", error=str(e))
 
     # ── Agent framework ──
     # Every step degrades gracefully: the business API must keep serving even
@@ -67,13 +66,13 @@ async def lifespan(app: FastAPI):
     try:
         await cache_service.initialize()
     except Exception as e:
-        struct_logger.warning("cache_initialization_failed", error=str(e))
+        logger.warning("cache_initialization_failed", error=str(e))
 
     try:
         # Pre-warm the checkpointer so the first crawl does not pay pool setup.
         await get_checkpointer()
     except Exception as e:
-        struct_logger.warning(
+        logger.warning(
             "agent_checkpointer_unavailable",
             error=str(e),
             hint="start the agent store with: docker compose up -d agent-db",
@@ -85,9 +84,9 @@ async def lifespan(app: FastAPI):
 
             await database_service.create_tables()
         except Exception as e:
-            struct_logger.error("agent_auth_tables_unavailable", error=str(e))
+            logger.error("agent_auth_tables_unavailable", error=str(e))
 
-    struct_logger.info(
+    logger.info(
         "application_startup",
         project=agent_settings.PROJECT_NAME,
         environment=agent_settings.ENVIRONMENT.value,
@@ -105,7 +104,7 @@ async def lifespan(app: FastAPI):
 
         await match_registry.shutdown()
     except Exception as e:
-        struct_logger.warning("match_runs_shutdown_failed", error=str(e))
+        logger.warning("match_runs_shutdown_failed", error=str(e))
 
     # Flush before closing anything else: Langfuse exports spans in the
     # background, so a shutdown right after an agent run would drop its tail.
@@ -119,11 +118,11 @@ async def lifespan(app: FastAPI):
 
         browser_mgr.shutdown()
     except Exception as e:
-        struct_logger.warning("browser_shutdown_failed", error=str(e))
+        logger.warning("browser_shutdown_failed", error=str(e))
 
     await cache_service.close()
     await close_connection_pool()
-    struct_logger.info("application_shutdown")
+    logger.info("application_shutdown")
 
 
 app = FastAPI(title="JobMatcher API", lifespan=lifespan)
@@ -145,7 +144,12 @@ async def handle_app_error(request: Request, exc: AppError):
 
 @app.exception_handler(Exception)
 async def handle_unexpected_error(request: Request, exc: Exception):
-    logger.exception("Unexpected error")
+    logger.exception(
+        "unhandled_exception",
+        method=request.method,
+        path=request.url.path,
+        error=str(exc)[:500],
+    )
     return JSONResponse(
         status_code=500,
         content={

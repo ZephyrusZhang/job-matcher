@@ -18,7 +18,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from app.agents.match_tools import TurnContext, reset_turn_context, set_turn_context
 from app.agents.matcher import matcher_agent
 from app.core.langgraph.base import AgentCancelled
-from app.core.logging import logger
+from app.core.logging import get_logger
 from app.database import get_db
 from app.exceptions import AppError
 from app.models import job as job_model
@@ -33,6 +33,8 @@ from app.schemas.match import (
 )
 from app.services.match_runs import HEARTBEAT_SECONDS, Run, registry
 from app.utils.job_citations import extract_job_ids
+
+logger = get_logger(__name__)
 
 # Guards against a wedged agent holding a run open forever.
 TURN_TIMEOUT_SECONDS = 300

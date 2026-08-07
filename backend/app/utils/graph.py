@@ -8,8 +8,10 @@ from langchain_core.messages import BaseMessage
 from langchain_core.messages import trim_messages as _trim_messages
 
 from app.core.config import settings
-from app.core.logging import logger
+from app.core.logging import get_logger
 from app.schemas.agent import Message
+
+logger = get_logger(__name__)
 
 try:
     _TIKTOKEN_ENCODING = tiktoken.encoding_for_model(settings.DEFAULT_LLM_MODEL)

@@ -1,4 +1,3 @@
-import logging
 import uuid
 from pathlib import Path
 
@@ -13,7 +12,9 @@ from app.models import resume as resume_model
 from app.schemas.resume import ParsedResume, ResumeOut, ResumeUploadOut
 from app.utils.file_parser import FileParser
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ResumeService:

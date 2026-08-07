@@ -194,7 +194,10 @@ class Settings:
         env_settings = {
             Environment.DEVELOPMENT: {
                 "DEBUG": True,
-                "LOG_LEVEL": "DEBUG",
+                # INFO, not DEBUG: the app's own DEBUG events are few, but the
+                # level also governs how much the console shows per line. Set
+                # LOG_LEVEL=DEBUG explicitly to get callsites back.
+                "LOG_LEVEL": "INFO",
                 "LOG_FORMAT": "console",
                 "RATE_LIMIT_DEFAULT": ["1000 per day", "200 per hour"],
             },

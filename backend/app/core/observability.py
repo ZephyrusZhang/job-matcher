@@ -15,7 +15,9 @@ from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
 from app.core.config import settings
-from app.core.logging import logger
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def langfuse_init() -> None:

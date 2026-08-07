@@ -67,7 +67,7 @@ from app.core.langgraph.checkpointer import (
     clear_thread,
     get_checkpointer,
 )
-from app.core.logging import logger
+from app.core.logging import get_logger
 from app.core.metrics import (
     agent_runs_total,
     agent_tool_calls_total,
@@ -88,6 +88,8 @@ from app.utils.graph import (
     prepare_messages,
     process_llm_response,
 )
+
+logger = get_logger(__name__)
 
 
 class AgentCancelled(Exception):

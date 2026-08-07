@@ -25,8 +25,10 @@ import asyncio
 import threading
 from typing import Any, Optional
 
-from app.core.logging import logger
+from app.core.logging import get_logger
 from app.models import match_conversation as conv_model
+
+logger = get_logger(__name__)
 
 # Frames that can change the reasoning trace. Every other frame — most of them,
 # since one answer streams hundreds of `final_delta` — skips the large payload.
